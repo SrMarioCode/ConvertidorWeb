@@ -1,0 +1,159 @@
+{# ============================================================================
+   Página de Inicio y Explicación (`/`) — app/templates/index.html
+   ============================================================================
+   Hereda el esqueleto general de `base.html` mediante `{% extends "base.html" %}`
+   y rellena el bloque `{% block content %}` con:
+   1. El Héroe minimalista estilo Google explicando el propósito del sitio y un
+      botón principal para abrir el convertidor (`/convertir`).
+   2. Accesos rápidos ("De qué a qué") generados con un bucle Jinja2.
+   3. La explicación técnica sencilla de cómo logramos máxima calidad y mínimo
+      consumo de memoria RAM en el dispositivo.
+   4. El catálogo de formatos soportados renderizado dinámicamente desde Python.
+   ============================================================================ #}
+{% extends "base.html" %}
+
+{% block content %}
+  {# --------------------------------------------------------------------------
+     1. Sección Héroe Principal (Estilo Google)
+     -------------------------------------------------------------------------- #}
+  <section class="hero-section" aria-labelledby="home-hero-title">
+    <h1 id="home-hero-title" class="hero-title">
+      Convierte tus imágenes de un formato a otro sin perder calidad
+    </h1>
+    <p class="hero-subtitle">
+      Todo ocurre directamente dentro de tu propio dispositivo. Sin subir tus fotos
+      a servidores externos, sin esperas de red y con una arquitectura diseñada para
+      consumir el mínimo absoluto de memoria RAM.
+    </p>
+
+    <a href="{{ url_for('converter') }}" id="hero-open-converter-btn" class="giant-cta-button">
+      <span>Elegir qué tipo de imagen convertir</span>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+        <polyline points="12 5 19 12 12 19"></polyline>
+      </svg>
+    </a>
+
+    <div class="hero-meta-row">
+      <span class="hero-meta-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+        </svg>
+        Privacidad 100% local
+      </span>
+      <span class="hero-meta-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+          <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+          <rect x="9" y="9" width="6" height="6"></rect>
+        </svg>
+        Baja carga en memoria RAM
+      </span>
+      <span class="hero-meta-item">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        Píxeles intactos (Sin pérdida)
+      </span>
+    </div>
+  </section>
+
+  {# --------------------------------------------------------------------------
+     2. Accesos Directos ("De qué a qué") — Renderizados con Jinja2
+     -------------------------------------------------------------------------- #}
+  <section aria-label="Conversiones rápidas">
+    <div class="presets-bar">
+      <span class="presets-label">Accesos directos:</span>
+      {% for preset in quick_presets %}
+        <a href="{{ url_for('converter') }}?de={{ preset.source }}&a={{ preset.target }}"
+           class="preset-chip"
+           title="{{ preset.subtitle }}">
+          {{ preset.label }}
+        </a>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# --------------------------------------------------------------------------
+     3. ¿Cómo funciona la página y por qué consume tan poca memoria RAM?
+     -------------------------------------------------------------------------- #}
+  <section class="deferred-section" aria-labelledby="how-it-works-title">
+    <div class="section-header">
+      <h2 id="how-it-works-title" class="section-title">
+        ¿Cómo funciona esta página por dentro?
+      </h2>
+      <p class="section-desc">
+        Combinamos la simplicidad de <strong>FastAPI + Jinja2</strong> en el servidor
+        con las APIs gráficas modernas del navegador para proteger la memoria de tu equipo.
+      </p>
+    </div>
+
+    <div class="steps-grid">
+      <article class="info-card">
+        <span class="step-number">1</span>
+        <h3>Sin cadenas Base64 pesadas</h3>
+        <p>
+          Muchas webs antiguas leen las imágenes con <span class="code-badge">FileReader</span>
+          en texto Base64, inflando un +33% la memoria RAM. Aquí leemos el archivo binario
+          directo (<span class="code-badge">Blob</span>) y lo decodificamos en C++ nativo con
+          <span class="code-badge">createImageBitmap()</span>.
+        </p>
+      </article>
+
+      <article class="info-card">
+        <span class="step-number">2</span>
+        <h3>Hilo secundario (Web Worker)</h3>
+        <p>
+          Toda la conversión corre en un archivo aislado (<span class="code-badge">worker.js</span>)
+          usando <span class="code-badge">OffscreenCanvas</span>. Así, la pantalla nunca se
+          congela y los formatos avanzados como AVIF cargan <span class="code-badge">@jsquash</span>
+          (WebAssembly) únicamente cuando los necesitas.
+        </p>
+      </article>
+
+      <article class="info-card">
+        <span class="step-number">3</span>
+        <h3>Cola 1 por 1 y liberación inmediata</h3>
+        <p>
+          Si subes varias imágenes, se procesan estrictamente en fila de una en una.
+          Apenas se codifica una imagen, ejecutamos <span class="code-badge">bitmap.close()</span>
+          y vaciamos el lienzo para devolver la memoria RAM al sistema operativo al instante.
+        </p>
+      </article>
+    </div>
+  </section>
+
+  {# --------------------------------------------------------------------------
+     4. Catálogo de Formatos Soportados (Generado desde `app/config.py`)
+     -------------------------------------------------------------------------- #}
+  <section class="deferred-section" aria-labelledby="formats-section-title">
+    <div class="section-header">
+      <h2 id="formats-section-title" class="section-title">
+        Formatos de salida disponibles
+      </h2>
+      <p class="section-desc">
+        Haz clic en cualquier formato para ir directamente al convertidor con esa salida seleccionada.
+      </p>
+    </div>
+
+    <div class="formats-grid">
+      {% for fmt in output_formats %}
+        <a href="{{ url_for('converter') }}?de=auto&a={{ fmt.id }}"
+           class="format-card"
+           id="home-format-card-{{ fmt.id }}">
+          <div>
+            <div class="format-card-top">
+              <span class="format-name">.{{ fmt.extension | upper }} — {{ fmt.name }}</span>
+              <span class="format-badge">{{ fmt.badge }}</span>
+            </div>
+            <p style="margin-top: 0.6rem; color: var(--text-secondary); font-size: 0.92rem;">
+              {{ fmt.description }}
+            </p>
+          </div>
+          <div class="format-engine">
+            Motor: {{ fmt.engine }}
+          </div>
+        </a>
+      {% endfor %}
+    </div>
+  </section>
+{% endblock %}

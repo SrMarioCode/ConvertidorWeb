@@ -1,0 +1,129 @@
+{# ============================================================================
+   Plantilla Base Maestra (Jinja2) — app/templates/base.html
+   ============================================================================
+   ¿Cómo funciona la herencia en Jinja2?
+   -------------------------------------
+   Esta plantilla define el esqueleto HTML común de todo el sitio:
+   - La etiqueta `<head>` con metadatos, fuentes y la hoja de estilos CSS.
+   - La barra de navegación superior (`<header>`) estilo Google.
+   - El contenedor `<main>` con el bloque `{% block content %}{% endblock %}`
+     donde cada página hija (`index.html` y `converter.html`) inyecta su vista.
+   - El pie de página (`<footer>`) y los scripts comunes.
+   ============================================================================ #}
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  {# 1. Soporte nativo de Modo Claro y Oscuro sin destellos blancos (FOUC) #}
+  <meta name="color-scheme" content="light dark">
+  <script>
+    try {
+      document.querySelector('meta[name="color-scheme"]').content =
+        localStorage.getItem("color-scheme") ?? "light dark";
+    } catch (_) {}
+  </script>
+
+  <title>{% block title %}{{ page_title | default("ConvertidorWeb") }}{% endblock %}</title>
+  <meta name="description" content="Convierte imágenes entre PNG, WebP, AVIF, JPG, SVG, ICO y BMP sin perder calidad, directamente en tu dispositivo y con mínimo consumo de memoria RAM.">
+
+  {# 2. Tipografía moderna de Google Fonts (Plus Jakarta Sans + JetBrains Mono) #}
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  {# 3. Hoja de estilos principal servida por FastAPI desde /static/css/styles.css #}
+  <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}">
+</head>
+<body>
+
+  {# ==========================================================================
+     Barra de Navegación Superior Minimalista
+     ========================================================================== #}
+  <header class="site-header">
+    <div class="nav-container">
+      <a href="{{ url_for('home') }}" class="brand-logo" id="nav-brand-link">
+        <span class="brand-icon" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="4" ry="4"></rect>
+            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+            <polyline points="21 15 16 10 5 21"></polyline>
+          </svg>
+        </span>
+        <span>ConvertidorWeb</span>
+      </a>
+
+      <nav class="nav-links" aria-label="Navegación principal">
+        <a href="{{ url_for('home') }}"
+           id="nav-link-home"
+           class="nav-link {% if active_page == 'home' %}is-active{% endif %}">
+          Inicio y Explicación
+        </a>
+        <a href="{{ url_for('converter') }}"
+           id="nav-link-converter"
+           class="nav-link {% if active_page == 'converter' %}is-active{% endif %}">
+          Convertir Imagen
+        </a>
+      </nav>
+
+      <div class="nav-actions">
+        {# Botón de cambio de tema (Claro / Oscuro) siguiendo el estándar de dos estados #}
+        <button type="button"
+                id="theme-toggle-btn"
+                class="theme-toggle-btn"
+                title="Cambiar tema claro u oscuro">
+          <span class="theme-icon-dark" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+            </svg>
+          </span>
+          <span class="visually-hidden theme-icon-dark">Cambiar a tema oscuro</span>
+
+          <span class="theme-icon-light" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="5"></circle>
+              <line x1="12" y1="1" x2="12" y2="3"></line>
+              <line x1="12" y1="21" x2="12" y2="23"></line>
+              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+              <line x1="1" y1="12" x2="3" y2="12"></line>
+              <line x1="21" y1="12" x2="23" y2="12"></line>
+              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+            </svg>
+          </span>
+          <span class="visually-hidden theme-icon-light">Cambiar a tema claro</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  {# ==========================================================================
+     Contenido Dinámico de cada Vista (Inicio o Convertidor)
+     ========================================================================== #}
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  {# ==========================================================================
+     Pie de Página
+     ========================================================================== #}
+  <footer class="site-footer">
+    <p>
+      <strong>ConvertidorWeb</strong> · Construido con
+      <span class="code-badge">FastAPI</span> +
+      <span class="code-badge">Jinja2</span> +
+      <span class="code-badge">Web Workers</span> +
+      <span class="code-badge">@jsquash</span> ·
+      100% procesado en tu dispositivo con consumo mínimo de memoria RAM.
+    </p>
+  </footer>
+
+  {# Script ligero para alternar el tema Claro/Oscuro #}
+  <script src="{{ url_for('static', path='js/theme.js') }}" defer></script>
+
+  {# Bloque opcional para que cada página cargue sus propios scripts #}
+  {% block scripts %}{% endblock %}
+</body>
+</html>

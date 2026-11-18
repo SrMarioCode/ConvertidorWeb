@@ -1,0 +1,11 @@
+# =============================================================================
+# Dependencias del Servidor (FastAPI + Plantillas Jinja2)
+# =============================================================================
+# Nota educativa:
+# La conversión de imágenes ocurre 100% en el dispositivo del usuario (usando
+# Web Workers, OffscreenCanvas y WebAssembly con @jsquash). Por eso el servidor
+# Python se mantiene ultraligero y apenas consume memoria RAM.
+
+fastapi>=0.115.0          # Framework web moderno, rápido y tipado para Python
+uvicorn[standard]>=0.30.0 # Servidor ASGI de alto rendimiento para ejecutar FastAPI
+jinja2>=3.1.4             # Motor de plantillas HTML con herencia (base.html -> vistas)

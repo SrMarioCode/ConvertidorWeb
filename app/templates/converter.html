@@ -1,0 +1,196 @@
+{# ============================================================================
+   Página del Convertidor (`/convertir`) — app/templates/converter.html
+   ============================================================================
+   Esta vista implementa el flujo principal solicitado:
+   1. El "Botón / Cápsula Gigante" en el centro donde el usuario elige qué tipo
+      de imagen quiere convertir ("De [Formato Origen] ➔ a [Formato Destino]").
+   2. Al pulsar el botón gigante o elegir la combinación de formatos, se despliega
+      suavemente el área para subir su imagen (o arrastrarla desde su equipo).
+   3. La cola procesa las imágenes de una en una en un Web Worker y permite
+      descargarlas ya convertidas sin perder calidad.
+   ============================================================================ #}
+{% extends "base.html" %}
+
+{% block content %}
+  {# --------------------------------------------------------------------------
+     1. Encabezado Minimalista de la Herramienta
+     -------------------------------------------------------------------------- #}
+  <section class="converter-hero" aria-labelledby="converter-main-title">
+    <h1 id="converter-main-title" class="converter-title">
+      ¿Qué tipo de imagen quieres convertir?
+    </h1>
+    <p class="converter-subtitle">
+      Elige de qué formato a qué formato deseas convertir y sube tu imagen.
+    </p>
+  </section>
+
+  {# --------------------------------------------------------------------------
+     2. EL BOTÓN / CÁPSULA GIGANTE INTERACTIVA ("DE QUÉ A QUÉ")
+     -------------------------------------------------------------------------- #}
+  <section aria-label="Configuración de formato de origen y destino">
+    <div class="giant-converter-capsule" id="giant-converter-capsule">
+      <div class="capsule-grid">
+
+        {# Selector 1: Formato de Origen ("De qué") #}
+        <label class="capsule-selector-box" for="source-format-select">
+          <span class="capsule-label">Convertir de (Origen)</span>
+          <select id="source-format-select" name="source_format" class="capsule-select">
+            {% for fmt in input_formats %}
+              <option value="{{ fmt.id }}"
+                      data-accept="{{ fmt.accept }}"
+                      {% if fmt.id == selected_source %}selected{% endif %}>
+                {{ fmt.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+
+        {# Botón central para intercambiar Origen ⇄ Destino #}
+        <button type="button"
+                id="swap-formats-btn"
+                class="capsule-swap-btn"
+                title="Intercambiar formato de origen y destino"
+                aria-label="Intercambiar formato de origen y destino">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="17 1 21 5 17 9"></polyline>
+            <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+            <polyline points="7 23 3 19 7 15"></polyline>
+            <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+          </svg>
+        </button>
+
+        {# Selector 2: Formato de Destino ("A qué") #}
+        <label class="capsule-selector-box" for="target-format-select">
+          <span class="capsule-label">A formato (Destino)</span>
+          <select id="target-format-select" name="target_format" class="capsule-select">
+            {% for fmt in output_formats %}
+              <option value="{{ fmt.id }}"
+                      data-mime="{{ fmt.mime }}"
+                      data-ext="{{ fmt.extension }}"
+                      data-engine="{{ fmt.engine }}"
+                      {% if fmt.id == selected_target %}selected{% endif %}>
+                {{ fmt.name }} (.{{ fmt.extension }})
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+
+        {# Acción dentro del Botón Gigante para desplegar/elegir la imagen #}
+        <button type="button" id="capsule-action-btn" class="capsule-action-btn">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+          <span id="capsule-action-text">Elegir imagen</span>
+        </button>
+
+      </div>
+    </div>
+
+    {# Píldoras rápidas para cambiar "De qué a qué" en 1 clic #}
+    <div class="presets-bar" aria-label="Combinaciones frecuentes">
+      <span class="presets-label">Combinaciones rápidas:</span>
+      {% for preset in quick_presets %}
+        <button type="button"
+                class="preset-chip js-preset-btn"
+                data-source="{{ preset.source }}"
+                data-target="{{ preset.target }}"
+                title="{{ preset.subtitle }}">
+          {{ preset.label }}
+        </button>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# --------------------------------------------------------------------------
+     3. ÁREA DESPLEGABLE DE SUBIDA, CALIDAD Y COLA DE DESCARGA
+     -------------------------------------------------------------------------- #}
+  <section id="upload-workspace-panel" class="workspace-panel reveal-panel" aria-label="Zona de carga y conversión">
+
+    {# Input de archivos nativo oculto que se controla desde la interfaz #}
+    <input type="file"
+           id="file-input"
+           class="visually-hidden"
+           accept="image/png,image/jpeg,image/webp,image/avif,image/svg+xml,image/bmp,image/gif,image/x-icon,.ico"
+           multiple>
+
+    {# Tarjeta Drag & Drop #}
+    <div id="dropzone-card" class="dropzone-card" role="button" tabindex="0" aria-describedby="dropzone-dynamic-hint">
+      <div class="dropzone-icon" aria-hidden="true">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="18" height="18" rx="3" ry="3"></rect>
+          <circle cx="8.5" cy="8.5" r="1.5"></circle>
+          <polyline points="21 15 16 10 5 21"></polyline>
+        </svg>
+      </div>
+
+      <h2 id="dropzone-dynamic-title" class="dropzone-title">
+        Sube o arrastra tu imagen para convertirla a WebP
+      </h2>
+      <p id="dropzone-dynamic-hint" class="dropzone-hint">
+        Se procesará directamente en tu dispositivo a máxima calidad (100% sin pérdida) y liberando la RAM al instante.
+      </p>
+
+      <div class="dropzone-buttons">
+        <button type="button" id="select-files-btn" class="btn-primary">
+          Seleccionar imagen de tu dispositivo
+        </button>
+        <button type="button" id="demo-image-btn" class="btn-secondary">
+          Probar con una imagen de ejemplo
+        </button>
+      </div>
+    </div>
+
+    {# Barra de Calidad Sin Pérdida y Estado de Memoria RAM en Vivo #}
+    <div class="settings-telemetry-bar">
+      <div class="quality-control-group">
+        <label class="lossless-toggle-label" for="lossless-checkbox">
+          <input type="checkbox" id="lossless-checkbox" checked>
+          <span>Máxima calidad / Sin pérdida (100%)</span>
+        </label>
+
+        <div id="custom-quality-wrap" class="quality-slider-wrap" hidden>
+          <label for="quality-range">Compresión:</label>
+          <input type="range" id="quality-range" min="50" max="100" value="92" step="1">
+          <span id="quality-value-label" class="code-badge">92%</span>
+        </div>
+      </div>
+
+      <div id="ram-status-pill" class="ram-telemetry-pill" role="status" aria-live="polite">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+        <span id="ram-status-text">Worker listo · Baja carga de RAM activa</span>
+      </div>
+    </div>
+
+    {# ------------------------------------------------------------------------
+       4. COLA DE IMÁGENES CONVERTIDAS Y BOTONES DE DESCARGA
+       ------------------------------------------------------------------------ #}
+    <div id="queue-section" class="queue-section reveal-panel" hidden>
+      <div class="queue-header">
+        <h3 class="queue-title" id="queue-counter-title">Imágenes convertidas</h3>
+        <div class="queue-actions">
+          <button type="button" id="reconvert-all-btn" class="btn-secondary" title="Volver a convertir con el nuevo formato seleccionado">
+            Reconvertir al formato actual
+          </button>
+          <button type="button" id="download-all-btn" class="btn-primary">
+            Descargar todas
+          </button>
+          <button type="button" id="clear-queue-btn" class="btn-secondary">
+            Limpiar y liberar RAM
+          </button>
+        </div>
+      </div>
+
+      <div id="queue-list" class="queue-list" aria-live="polite"></div>
+    </div>
+
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  {# Cargamos la lógica del convertidor solo en la página `/convertir` #}
+  <script src="{{ url_for('static', path='js/app.js') }}" defer></script>
+{% endblock %}
