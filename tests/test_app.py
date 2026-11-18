@@ -67,10 +67,15 @@ def test_eraser_page_renders_studio_and_transparent_formats() -> None:
     assert "text/html" in response.headers["content-type"]
     html = response.text
     assert 'id="eraser-studio"' in html
+    assert 'id="eraser-toolbar"' in html
+    assert 'focusgroup="toolbar wrap"' in html
+    assert 'aria-controls="eraser-canvas"' in html
     assert 'id="eraser-tool-erase"' in html
+    assert 'id="eraser-tool-lasso"' in html
     assert 'id="eraser-tool-select"' in html
     assert 'id="eraser-tool-restore"' in html
     assert 'id="eraser-tool-pan"' in html
+    assert 'aria-disabled="true"' in html
     assert 'id="eraser-brush-size"' in html
     assert 'id="eraser-brush-softness"' in html
     assert 'id="eraser-viewport"' in html
@@ -210,6 +215,8 @@ def test_static_assets_and_worker_contracts() -> None:
     assert "ConvertidorEraser" in eraser_js
     assert "exportTransparentPng" in eraser_js
     assert "syncModernRangeSlider" in eraser_js
+    assert "keep-inside" in eraser_js
+    assert "buildKeepInsidePath" in eraser_js
     assert "originalBitmap.close()" in eraser_js
 
 

@@ -14,6 +14,10 @@
  *    máscara alfa de borrado (`maskCanvas`).
  *    - "Borrador": pinta en `maskCanvas` y recorta directo en el lienzo
  *      visible usando `globalCompositeOperation = "destination-out"`.
+ *    - "Encerrar" (`keep-inside`): el usuario rodea el sujeto con una línea;
+ *      al soltar, rellenamos todo lo exterior con la regla `"evenodd"` sobre
+ *      `maskCanvas` usando un `Path2D` compuesto (rectángulo total + polígono)
+ *      en una sola pasada sin crear lienzos temporales gigantes.
  *    - "Restaurar": borra esa zona de `maskCanvas` y recompone únicamente
  *      el rectángulo modificado desde `originalBitmap`.
  *    - "Selección": pinta una máscara roja translúcida en un lienzo superior
@@ -111,6 +115,7 @@
    */
   function createEraserController(options = {}) {
     const studioEl = document.getElementById("eraser-studio");
+    const toolbarEl = document.getElementById("eraser-toolbar");
     const viewportEl = document.getElementById("eraser-viewport");
     const stageEl = document.getElementById("eraser-stage");
     const canvas = document.getElementById("eraser-canvas");
@@ -161,8 +166,9 @@
     let fitHeight = 0;
     let zoom = 1;
 
-    let currentTool = "erase"; // "erase" | "select" | "restore" | "pan"
+    let currentTool = "erase"; // "erase" | "lasso" | "select" | "restore" | "pan"
     let spacePanActive = false;
+    let statusHintMessage = "";
     let brushSize = Number(brushSizeInput?.value) || 36;
     let brushSoftness = Number(brushSoftnessInput?.value) || 15;
 
@@ -306,6 +312,121 @@
       }
     }
 
+    /**
+     * Calcula el área de un polígono (fórmula del cordón / Shoelace) para validar
+     * que el trazo de "Encerrar" realmente rodea una superficie y no fue un clic.
+     */
+    function calculatePolygonArea(points) {
+      if (!points || points.length < 3) return 0;
+      let sum = 0;
+      for (let i = 0; i < points.length; i += 1) {
+        const p1 = points[i];
+        const p2 = points[(i + 1) % points.length];
+        sum += p1.x * p2.y - p2.x * p1.y;
+      }
+      return Math.abs(sum) / 2;
+    }
+
+    /**
+     * Construye un `Path2D` compuesto formado por un rectángulo exterior completo
+     * más el polígono del usuario. Al rellenarlo con la regla `"evenodd"`, todo
+     * lo exterior al contorno queda cubierto (borrado) y el interior intacto,
+     * sin importar si el usuario dibujó en sentido horario o antihorario.
+     */
+    function buildKeepInsidePath(points) {
+      if (!points || points.length < 3) return null;
+      let minX = 0;
+      let minY = 0;
+      let maxX = imgWidth;
+      let maxY = imgHeight;
+      for (let i = 0; i < points.length; i += 1) {
+        if (points[i].x < minX) minX = points[i].x;
+        if (points[i].y < minY) minY = points[i].y;
+        if (points[i].x > maxX) maxX = points[i].x;
+        if (points[i].y > maxY) maxY = points[i].y;
+      }
+
+      const pad = 16;
+      const path = new Path2D();
+      path.rect(minX - pad, minY - pad, maxX - minX + pad * 2, maxY - minY + pad * 2);
+      path.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i += 1) {
+        path.lineTo(points[i].x, points[i].y);
+      }
+      path.closePath();
+      return path;
+    }
+
+    /**
+     * Renderiza la vista previa en vivo mientras el usuario rodea el objeto con
+     * "Encerrar": tiñe de rojo suave la zona exterior que se borrará y muestra
+     * una línea punteada de cierre automático hasta el punto inicial.
+     */
+    function renderLassoPreview(points) {
+      selectionCanvas.classList.add("is-lasso-preview");
+      selCtx.clearRect(0, 0, imgWidth, imgHeight);
+      if (!points || points.length === 0) return;
+
+      const rect = lastStageClientRect || stageEl.getBoundingClientRect();
+      const scale = rect.width > 0 ? imgWidth / rect.width : 1;
+
+      selCtx.save();
+
+      if (points.length >= 3) {
+        const outsidePath = buildKeepInsidePath(points);
+        if (outsidePath) {
+          selCtx.fillStyle = "rgba(217, 48, 37, 0.34)";
+          selCtx.fill(outsidePath, "evenodd");
+        }
+      }
+
+      if (points.length >= 2) {
+        const first = points[0];
+        const last = points[points.length - 1];
+        selCtx.beginPath();
+        selCtx.moveTo(last.x, last.y);
+        selCtx.lineTo(first.x, first.y);
+        selCtx.setLineDash([6 * scale, 5 * scale]);
+        selCtx.lineWidth = Math.max(1.5, 2 * scale);
+        selCtx.strokeStyle = "rgba(255, 255, 255, 0.92)";
+        selCtx.stroke();
+        selCtx.strokeStyle = "rgba(11, 87, 208, 0.85)";
+        selCtx.lineDashOffset = 6 * scale;
+        selCtx.stroke();
+        selCtx.setLineDash([]);
+        selCtx.lineDashOffset = 0;
+      }
+
+      selCtx.beginPath();
+      selCtx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i += 1) {
+        selCtx.lineTo(points[i].x, points[i].y);
+      }
+      selCtx.lineCap = "round";
+      selCtx.lineJoin = "round";
+
+      if (points.length > 1) {
+        selCtx.lineWidth = Math.max(2, 4.2 * scale);
+        selCtx.strokeStyle = "rgba(255, 255, 255, 0.95)";
+        selCtx.stroke();
+
+        selCtx.lineWidth = Math.max(1.2, 2.2 * scale);
+        selCtx.strokeStyle = "#0b57d0";
+        selCtx.stroke();
+      }
+
+      // Marcador del punto de inicio del contorno
+      selCtx.beginPath();
+      selCtx.arc(points[0].x, points[0].y, Math.max(3, 5 * scale), 0, Math.PI * 2);
+      selCtx.fillStyle = "#ffffff";
+      selCtx.fill();
+      selCtx.lineWidth = Math.max(1.5, 2 * scale);
+      selCtx.strokeStyle = "#0b57d0";
+      selCtx.stroke();
+
+      selCtx.restore();
+    }
+
     // ========================================================================
     // 2. COMPOSICIÓN Y ACTUALIZACIÓN PARCIAL DE ALTA EFICIENCIA
     // ========================================================================
@@ -339,6 +460,15 @@
         drawStrokeOnContext(maskCtx, entry, "#000000", "source-over");
       } else if (entry.tool === "restore") {
         drawStrokeOnContext(maskCtx, entry, "#000000", "destination-out");
+      } else if (entry.tool === "keep-inside" && Array.isArray(entry.points)) {
+        const outsidePath = buildKeepInsidePath(entry.points);
+        if (outsidePath) {
+          maskCtx.save();
+          maskCtx.globalCompositeOperation = "source-over";
+          maskCtx.fillStyle = "#000000";
+          maskCtx.fill(outsidePath, "evenodd");
+          maskCtx.restore();
+        }
       } else if (entry.tool === "batch" && Array.isArray(entry.strokes)) {
         entry.strokes.forEach((s) => {
           drawStrokeOnContext(maskCtx, s, "#000000", "source-over");
@@ -353,6 +483,7 @@
     }
 
     function rebuildSelectionCanvas() {
+      selectionCanvas.classList.remove("is-lasso-preview");
       selCtx.clearRect(0, 0, imgWidth, imgHeight);
       selectionStrokes.forEach((stroke) => {
         drawStrokeOnContext(selCtx, stroke, SELECTION_COLOR, "source-over");
@@ -362,20 +493,26 @@
     // ========================================================================
     // 3. SINCRONIZACIÓN DE INTERFAZ Y TELEMETRÍA
     // ========================================================================
+    function setToolbarButtonDisabled(btn, isDisabled) {
+      if (!btn) return;
+      btn.setAttribute("aria-disabled", isDisabled ? "true" : "false");
+    }
+
     function updateUIState() {
       const hasImage = Boolean(originalBitmap);
       const hasSelection = selectionStrokes.length > 0;
       const effectiveTool = getEffectiveTool();
 
-      if (undoBtn) {
-        undoBtn.disabled = !hasImage || (undoStack.length === 0 && !hasSelection);
-      }
-      if (redoBtn) {
-        redoBtn.disabled = !hasImage || redoStack.length === 0;
-      }
-      if (resetBtn) {
-        resetBtn.disabled = !hasImage || (undoStack.length === 0 && !hasSelection);
-      }
+      setToolbarButtonDisabled(
+        undoBtn,
+        !hasImage || (undoStack.length === 0 && !hasSelection)
+      );
+      setToolbarButtonDisabled(redoBtn, !hasImage || redoStack.length === 0);
+      setToolbarButtonDisabled(
+        resetBtn,
+        !hasImage || (undoStack.length === 0 && !hasSelection)
+      );
+
       if (applySelectionBtn) {
         applySelectionBtn.disabled = !hasImage || !hasSelection;
       }
@@ -391,7 +528,8 @@
         zoomResetBtn.textContent = `${Math.round(zoom * 100)}%`;
       }
 
-      // Atributos visuales del lienzo según herramienta activa
+      // Atributos visuales del lienzo y estudio según herramienta activa
+      studioEl.dataset.activeTool = effectiveTool;
       stageEl.dataset.tool = effectiveTool;
       canvas.classList.toggle("is-panning-mode", effectiveTool === "pan");
 
@@ -404,7 +542,12 @@
           const pendingSel = hasSelection
             ? ` · ${selectionStrokes.length} trazo${selectionStrokes.length === 1 ? "" : "s"} de selección pendiente${selectionStrokes.length === 1 ? "" : "s"}`
             : "";
-          telemetryTextEl.textContent = `${imgWidth} × ${imgHeight} px · ${totalStrokes} paso${totalStrokes === 1 ? "" : "s"} en historial (máscara ligera)${pendingSel}`;
+          const suffixHint = statusHintMessage
+            ? ` · ${statusHintMessage}`
+            : effectiveTool === "lasso"
+              ? " · Rodea lo que quieres conservar y suelta para borrar lo de afuera"
+              : "";
+          telemetryTextEl.textContent = `${imgWidth} × ${imgHeight} px · ${totalStrokes} paso${totalStrokes === 1 ? "" : "s"} en historial (máscara ligera)${pendingSel}${suffixHint}`;
         }
       }
 
@@ -421,12 +564,13 @@
 
     function selectTool(toolName) {
       currentTool = toolName;
+      statusHintMessage = "";
       toolButtons.forEach((btn) => {
         const active = btn.dataset.tool === toolName;
         btn.classList.toggle("is-active", active);
         btn.setAttribute("aria-pressed", active ? "true" : "false");
       });
-      if (toolName === "pan" && brushCursorEl) {
+      if ((toolName === "pan" || toolName === "lasso") && brushCursorEl) {
         brushCursorEl.hidden = true;
       }
       updateUIState();
@@ -492,7 +636,14 @@
         lastCursorClient = { x: clientX, y: clientY };
       }
 
-      if (!brushCursorEl || !originalBitmap || getEffectiveTool() === "pan" || !lastCursorClient) {
+      const effectiveTool = getEffectiveTool();
+      if (
+        !brushCursorEl ||
+        !originalBitmap ||
+        effectiveTool === "pan" ||
+        effectiveTool === "lasso" ||
+        !lastCursorClient
+      ) {
         if (brushCursorEl) brushCursorEl.hidden = true;
         return;
       }
@@ -515,7 +666,7 @@
       brushCursorEl.style.height = `${displayDiameter}px`;
       brushCursorEl.style.left = `${localX}px`;
       brushCursorEl.style.top = `${localY}px`;
-      brushCursorEl.dataset.tool = getEffectiveTool();
+      brushCursorEl.dataset.tool = effectiveTool;
     }
 
     canvas.addEventListener("pointerdown", (e) => {
@@ -524,6 +675,7 @@
       activePointerId = e.pointerId;
       canvas.setPointerCapture(e.pointerId);
       lastStageClientRect = stageEl.getBoundingClientRect();
+      statusHintMessage = "";
 
       const tool = getEffectiveTool();
       if (tool === "pan") {
@@ -543,7 +695,7 @@
         points: [pt],
       };
 
-      // Dibujamos el primer punto inmediato
+      // Dibujamos el primer punto o vista previa inmediata
       if (tool === "erase") {
         drawSegmentOnContext(maskCtx, pt, pt, brushSize, brushSoftness, "#000000", "source-over");
         drawSegmentOnContext(ctx, pt, pt, brushSize, brushSoftness, "#000000", "destination-out");
@@ -561,6 +713,8 @@
           SELECTION_COLOR,
           "source-over"
         );
+      } else if (tool === "lasso") {
+        renderLassoPreview(currentStroke.points);
       }
     });
 
@@ -580,6 +734,16 @@
       if (!currentStroke) return;
       const pt = clientToCanvasCoords(e.clientX, e.clientY);
       const prevPt = currentStroke.points[currentStroke.points.length - 1];
+
+      if (currentStroke.tool === "lasso") {
+        // Diezmado ligero (1.5 px en coordenadas de imagen) para ahorrar RAM en trazos largos
+        if (Math.hypot(pt.x - prevPt.x, pt.y - prevPt.y) >= 1.5) {
+          currentStroke.points.push(pt);
+          renderLassoPreview(currentStroke.points);
+        }
+        return;
+      }
+
       currentStroke.points.push(pt);
 
       if (currentStroke.tool === "erase") {
@@ -639,7 +803,52 @@
       }
 
       if (currentStroke) {
-        if (currentStroke.tool === "select") {
+        if (currentStroke.tool === "lasso") {
+          const wasCanceled = e?.type === "pointercancel";
+          if (!wasCanceled && e) {
+            const finalPt = clientToCanvasCoords(e.clientX, e.clientY);
+            const lastPt = currentStroke.points[currentStroke.points.length - 1];
+            if (Math.hypot(finalPt.x - lastPt.x, finalPt.y - lastPt.y) >= 0.5) {
+              currentStroke.points.push(finalPt);
+            }
+          }
+
+          let minX = Infinity;
+          let minY = Infinity;
+          let maxX = -Infinity;
+          let maxY = -Infinity;
+          for (let i = 0; i < currentStroke.points.length; i += 1) {
+            const p = currentStroke.points[i];
+            if (p.x < minX) minX = p.x;
+            if (p.y < minY) minY = p.y;
+            if (p.x > maxX) maxX = p.x;
+            if (p.y > maxY) maxY = p.y;
+          }
+
+          const minAreaThreshold = Math.min(16, imgWidth * imgHeight * 0.01);
+          const enclosesRegion =
+            !wasCanceled &&
+            currentStroke.points.length >= 3 &&
+            maxX - minX >= 4 &&
+            maxY - minY >= 4 &&
+            calculatePolygonArea(currentStroke.points) >= minAreaThreshold;
+
+          rebuildSelectionCanvas();
+
+          if (enclosesRegion) {
+            const keepInsideEntry = {
+              tool: "keep-inside",
+              points: currentStroke.points,
+            };
+            undoStack.push(keepInsideEntry);
+            redoStack.length = 0;
+            applyEntryToMask(keepInsideEntry);
+            recompositeFullCanvas();
+            statusHintMessage = "Todo lo exterior a la línea fue borrado (Ctrl+Z para deshacer)";
+          } else if (!wasCanceled) {
+            statusHintMessage = "Rodea un área mayor para conservarla y borrar lo de afuera";
+          }
+        } else if (currentStroke.tool === "select") {
           selectionStrokes.push(currentStroke);
         } else {
           undoStack.push(currentStroke);
@@ -736,15 +945,19 @@
       redoStack.length = 0;
 
       applyEntryToMask(batchEntry);
+      selectionCanvas.classList.remove("is-lasso-preview");
       selCtx.clearRect(0, 0, imgWidth, imgHeight);
       recompositeFullCanvas();
+      statusHintMessage = "Área seleccionada borrada";
       updateUIState();
     }
 
     function clearSelectionMask() {
       if (selectionStrokes.length === 0) return;
       selectionStrokes.length = 0;
+      selectionCanvas.classList.remove("is-lasso-preview");
       selCtx.clearRect(0, 0, imgWidth, imgHeight);
+      statusHintMessage = "Selección cancelada";
       updateUIState();
     }
 
@@ -753,6 +966,7 @@
       if (selectionStrokes.length > 0) {
         selectionStrokes.pop();
         rebuildSelectionCanvas();
+        statusHintMessage = "Trazo de selección deshecho";
         updateUIState();
         return;
       }
@@ -760,6 +974,7 @@
       const last = undoStack.pop();
       redoStack.push(last);
       rebuildMaskFromHistory();
+      statusHintMessage = "Último paso deshecho";
       updateUIState();
     }
 
@@ -769,6 +984,7 @@
       undoStack.push(next);
       applyEntryToMask(next);
       recompositeFullCanvas();
+      statusHintMessage = "Paso rehecho";
       updateUIState();
     }
 
@@ -777,10 +993,60 @@
       undoStack.length = 0;
       redoStack.length = 0;
       selectionStrokes.length = 0;
+      selectionCanvas.classList.remove("is-lasso-preview");
       maskCtx.clearRect(0, 0, imgWidth, imgHeight);
       selCtx.clearRect(0, 0, imgWidth, imgHeight);
       recompositeFullCanvas();
+      statusHintMessage = "Imagen original restaurada";
       updateUIState();
+    }
+
+    // Navegación por teclado del toolbar (`focusgroup` con fallback roving tabindex)
+    if (toolbarEl && !("focusGroup" in HTMLElement.prototype)) {
+      const toolbarItems = Array.from(
+        toolbarEl.querySelectorAll('button[type="button"]')
+      );
+      if (toolbarItems.length > 0) {
+        toolbarItems.forEach((btn, index) => {
+          btn.tabIndex = index === 0 ? 0 : -1;
+        });
+
+        toolbarEl.addEventListener("focusin", ({ target }) => {
+          const btn = target?.closest?.('button[type="button"]');
+          if (!btn || !toolbarItems.includes(btn)) return;
+          toolbarItems.forEach((item) => {
+            item.tabIndex = item === btn ? 0 : -1;
+          });
+        });
+
+        toolbarEl.addEventListener("keydown", (e) => {
+          const currentBtn = e.target?.closest?.('button[type="button"]');
+          const currentIndex = currentBtn ? toolbarItems.indexOf(currentBtn) : -1;
+          if (currentIndex === -1) return;
+
+          const vertical = toolbarEl.getAttribute("aria-orientation") === "vertical";
+          const rtl = getComputedStyle(toolbarEl).direction === "rtl";
+          const steps = vertical
+            ? { ArrowDown: 1, ArrowUp: -1 }
+            : { ArrowRight: rtl ? -1 : 1, ArrowLeft: rtl ? 1 : -1 };
+
+          let nextIndex = null;
+          if (e.key in steps) {
+            nextIndex =
+              (currentIndex + steps[e.key] + toolbarItems.length) %
+              toolbarItems.length;
+          } else if (e.key === "Home") {
+            nextIndex = 0;
+          } else if (e.key === "End") {
+            nextIndex = toolbarItems.length - 1;
+          }
+
+          if (nextIndex !== null) {
+            e.preventDefault();
+            toolbarItems[nextIndex].focus();
+          }
+        });
+      }
     }
 
     // Conexión de botones de la barra de herramientas
@@ -812,9 +1078,18 @@
       });
     }
 
-    undoBtn?.addEventListener("click", undoLastAction);
-    redoBtn?.addEventListener("click", redoLastAction);
-    resetBtn?.addEventListener("click", resetAllEdits);
+    undoBtn?.addEventListener("click", () => {
+      if (undoBtn.getAttribute("aria-disabled") === "true") return;
+      undoLastAction();
+    });
+    redoBtn?.addEventListener("click", () => {
+      if (redoBtn.getAttribute("aria-disabled") === "true") return;
+      redoLastAction();
+    });
+    resetBtn?.addEventListener("click", () => {
+      if (resetBtn.getAttribute("aria-disabled") === "true") return;
+      resetAllEdits();
+    });
 
     applySelectionBtn?.addEventListener("click", applySelectionErase);
     clearSelectionBtn?.addEventListener("click", clearSelectionMask);
@@ -1018,6 +1293,8 @@
       lastCursorClient = null;
       activePointerId = null;
       spacePanActive = false;
+      statusHintMessage = "";
+      selectionCanvas.classList.remove("is-lasso-preview");
     }
 
     function hasPendingChanges() {

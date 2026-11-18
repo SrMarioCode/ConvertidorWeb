@@ -146,7 +146,7 @@
     color-scheme: light;
   }
 
-  /* Tipografía y Geometría */
+  /* Tipografía, Geometría y Tamaño Mínimo de Objetivo Táctil (`form-factor-adaptation`) */
   --font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
   --radius-pill: 9999px;
@@ -154,9 +154,16 @@
   --radius-lg: 20px;
   --radius-md: 14px;
   --radius-sm: 10px;
+  --target-size: 26px;
   --shadow-soft: 0 2px 10px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.03);
   --shadow-elevated: 0 12px 32px -8px rgba(11, 87, 208, 0.12), 0 4px 12px rgba(0, 0, 0, 0.05);
   --max-width: 1060px;
+}
+
+@media (pointer: coarse) {
+  :root {
+    --target-size: 44px;
+  }
 }
 
 /* --------------------------------------------------------------------------
@@ -196,6 +203,41 @@ body {
   flex-direction: column;
   background-color: var(--bg-canvas);
   color: var(--text-primary);
+  overflow-wrap: break-word;
+}
+
+img,
+video {
+  max-inline-size: 100%;
+  block-size: auto;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+p,
+li {
+  text-wrap: pretty;
+}
+
+:where(a, code, .code-badge) {
+  overflow-wrap: anywhere;
+}
+
+:where(
+  button,
+  select,
+  textarea,
+  input:not([type="checkbox"], [type="radio"]),
+  [role="button"],
+  nav a,
+  label:has(input[type="checkbox"], input[type="radio"])
+) {
+  min-block-size: var(--target-size);
+  min-inline-size: var(--target-size);
 }
 
 main {
@@ -1083,6 +1125,7 @@ a {
    9. BORRADOR MANUAL DE FONDO CON LÁPIZ (`/borrador` y `<dialog>`)
    --------------------------------------------------------------------------
    Aplica guías modernas de `modern-web-guidance`:
+   - `toolbar`: `role="toolbar"`, separadores, `[aria-pressed="true"]`, `[aria-disabled="true"]` y `forced-colors`.
    - `slider`: controles de tamaño/suavizado con relleno de progreso y :focus-visible.
    - `2d-panning`: `scroll-axis-lock: none` y `overscroll-behavior: none`.
    - `dialog` + `prevent-page-scroll-under-modal-dialog` + `animate-to-from-top-layer`.
@@ -1106,7 +1149,7 @@ a {
   display: none;
 }
 
-.eraser-toolbar {
+.eraser-toolbar-shell {
   padding: 0.85rem 1.15rem;
   border-bottom: 1px solid var(--border-subtle);
   background-color: var(--bg-surface);
@@ -1117,40 +1160,66 @@ a {
   gap: 0.85rem;
 }
 
+.eraser-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+.eraser-toolbar-separator {
+  display: inline-block;
+  border-inline-start: 1px solid var(--border-subtle);
+  block-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+@media (max-width: 680px) {
+  .eraser-toolbar-separator {
+    opacity: 0;
+    inline-size: 0;
+    border-inline-start-color: transparent;
+  }
+}
+
 .eraser-tool-group {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem;
+  min-inline-size: 0;
+  max-inline-size: 100%;
   background-color: var(--bg-tonal);
   padding: 0.25rem;
-  border-radius: var(--radius-pill);
+  border-radius: 22px;
+  border: 1px solid transparent;
 }
 
 .eraser-tool-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.45rem;
-  padding: 0.48rem 0.9rem;
+  min-block-size: max(34px, var(--target-size));
+  min-inline-size: var(--target-size);
+  padding: 0.42rem 0.85rem;
   border-radius: var(--radius-pill);
-  border: none;
+  border: 1px solid transparent;
   background-color: transparent;
   color: var(--text-secondary);
   font-family: var(--font-sans);
   font-size: 0.875rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.16s ease, color 0.16s ease;
 }
 
-.eraser-tool-btn:hover {
-  color: var(--text-primary);
-  background-color: var(--bg-tonal-hover);
-}
-
-.eraser-tool-btn.is-active {
+.eraser-tool-btn[aria-pressed="true"] {
   background-color: var(--brand-primary);
   color: var(--brand-on-primary);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
 }
 
 /* Sliders modernos accesibles (`modern-web-guidance/slider`) */
@@ -1159,13 +1228,20 @@ a {
   flex-wrap: wrap;
   align-items: center;
   gap: 1rem;
+  max-inline-size: 100%;
+}
+
+.eraser-studio[data-active-tool="lasso"] .eraser-sliders-group,
+.eraser-studio[data-active-tool="pan"] .eraser-sliders-group {
+  opacity: 0.65;
 }
 
 .eraser-slider-control {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-  min-width: 145px;
+  min-inline-size: min(145px, 100%);
+  flex: 1 1 140px;
 }
 
 .eraser-slider-label {
@@ -1271,23 +1347,29 @@ input[type="range"].modern-range-slider:focus-visible {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.5rem;
+  min-inline-size: 0;
+  max-inline-size: 100%;
 }
 
 .eraser-icon-cluster {
   display: inline-flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.25rem;
+  min-inline-size: 0;
+  max-inline-size: 100%;
   background-color: var(--bg-tonal);
   padding: 0.25rem;
   border-radius: var(--radius-pill);
+  border: 1px solid transparent;
 }
 
 .eraser-icon-btn {
-  width: 34px;
-  height: 34px;
+  min-inline-size: max(34px, var(--target-size));
+  min-block-size: max(34px, var(--target-size));
   border-radius: var(--radius-pill);
-  border: none;
+  border: 1px solid transparent;
   background-color: transparent;
   color: var(--text-secondary);
   font-family: var(--font-sans);
@@ -1297,24 +1379,19 @@ input[type="range"].modern-range-slider:focus-visible {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background-color 0.16s ease, color 0.16s ease;
 }
 
-.eraser-icon-btn:hover:not(:disabled) {
-  background-color: var(--bg-surface);
-  color: var(--text-primary);
-}
-
-.eraser-icon-btn:disabled {
+.eraser-icon-btn:where([aria-disabled="true"], :disabled) {
   opacity: 0.38;
   cursor: not-allowed;
 }
 
 .eraser-zoom-readout {
   padding: 0 0.55rem;
-  height: 34px;
+  min-block-size: max(34px, var(--target-size));
+  min-inline-size: var(--target-size);
   border-radius: var(--radius-pill);
-  border: none;
+  border: 1px solid transparent;
   background-color: transparent;
   color: var(--text-primary);
   font-family: var(--font-mono);
@@ -1323,13 +1400,11 @@ input[type="range"].modern-range-slider:focus-visible {
   cursor: pointer;
 }
 
-.eraser-zoom-readout:hover {
-  background-color: var(--bg-surface);
-}
-
 .eraser-swatch-btn {
-  width: 26px;
-  height: 26px;
+  min-inline-size: var(--target-size);
+  min-block-size: var(--target-size);
+  aspect-ratio: 1;
+  padding: 0;
   border-radius: var(--radius-pill);
   border: 2px solid var(--border-strong);
   cursor: pointer;
@@ -1345,9 +1420,64 @@ input[type="range"].modern-range-slider:focus-visible {
   background: #ffffff;
 }
 
-.eraser-swatch-btn.is-active {
+.eraser-swatch-btn[aria-pressed="true"] {
   border-color: var(--brand-primary);
   box-shadow: 0 0 0 2px var(--brand-soft-bg);
+}
+
+:where(.eraser-tool-btn, .eraser-icon-btn, .eraser-zoom-readout, .eraser-swatch-btn):focus-visible {
+  outline: 2px solid var(--brand-primary);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) {
+  .eraser-tool-btn:hover {
+    color: var(--text-primary);
+    background-color: var(--bg-tonal-hover);
+  }
+
+  .eraser-tool-btn[aria-pressed="true"]:hover {
+    background-color: var(--brand-primary);
+    color: var(--brand-on-primary);
+  }
+
+  .eraser-icon-btn:hover:not([aria-disabled="true"], :disabled) {
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+  }
+
+  .eraser-zoom-readout:hover {
+    background-color: var(--bg-surface);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .eraser-tool-btn,
+  .eraser-icon-btn,
+  .eraser-zoom-readout,
+  .eraser-swatch-btn {
+    transition: background-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+  }
+}
+
+@media (forced-colors: active) {
+  .eraser-tool-btn,
+  .eraser-icon-btn,
+  .eraser-zoom-readout {
+    border: 1px solid ButtonText;
+  }
+
+  .eraser-tool-btn[aria-pressed="true"],
+  .eraser-swatch-btn[aria-pressed="true"] {
+    background-color: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+    forced-color-adjust: none;
+  }
+
+  .eraser-toolbar-separator {
+    border-inline-start-color: ButtonText;
+  }
 }
 
 /* Barra contextual del modo Lápiz de Selección */
@@ -1450,6 +1580,10 @@ input[type="range"].modern-range-slider:focus-visible {
   height: 100%;
   pointer-events: none;
   opacity: 0.48;
+}
+
+.eraser-selection-canvas.is-lasso-preview {
+  opacity: 1;
 }
 
 .eraser-brush-cursor {

@@ -52,7 +52,7 @@ ConvertidorWeb/
 5. **Carga bajo demanda de WebAssembly (`@jsquash` Single-Threaded)**:
    Para formatos estándar (`PNG`, `JPG`, `WebP`) usamos el codificador nativo en C++ del navegador (o `@jsquash/webp` con `lossless: 1, exact: 1` para WebP sin pérdida). Para `AVIF`, el Worker instancia directamente el módulo WebAssembly single-threaded (`avif_enc.wasm`) con control real de cuantización (`cqLevel: 0` sin pérdida y `subsample: 3` YUV444) sin crear sub-workers cross-origin.
 6. **Borrador manual con historial vectorial por trazos (`eraser.js`)**:
-   En `/borrador` y dentro del `<dialog>` de `/convertir`, en vez de guardar copias completas de píxeles (`ImageData`) por cada paso de Deshacer, almacenamos únicamente las coordenadas ligeras de cada trazo (`{ tool, size, softness, points }`) junto a una máscara de borrado separada (`maskCanvas`). Incluye lápiz **Borrador** directo, lápiz de **Selección** rojo (para marcar y confirmar el recorte en lote), **Restaurar**, **Mover 2D / Zoom**, y liberación inmediata al cerrar (`originalBitmap.close()` + lienzos `1×1`).
+   En `/borrador` y dentro del `<dialog>` de `/convertir`, en vez de guardar copias completas de píxeles (`ImageData`) por cada paso de Deshacer, almacenamos únicamente las coordenadas ligeras de cada trazo (`{ tool, size, softness, points }` o polígonos `keep-inside`) junto a una máscara de borrado separada (`maskCanvas`). Incluye lápiz **Borrador** directo, modo **Encerrar** (rodea lo que quieres conservar y rellena todo lo exterior en `maskCanvas` usando un `Path2D` compuesto con regla `evenodd`), lápiz de **Selección** rojo, **Restaurar**, **Mover 2D / Zoom**, y liberación inmediata al cerrar (`originalBitmap.close()` + lienzos `1×1`).
 
 ---
 

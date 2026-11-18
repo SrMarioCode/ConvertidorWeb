@@ -12,69 +12,133 @@
    ============================================================================ #}
 <div id="eraser-studio" class="eraser-studio" hidden>
 
-  {# 1. Barra de Herramientas Minimalista Estilo Google Material 3 #}
-  <div class="eraser-toolbar" role="toolbar" aria-label="Herramientas del borrador de fondo">
+  {# 1. Barra de Herramientas Minimalista Estilo Google Material 3 (`modern-web-guidance/toolbar`) #}
+  <div class="eraser-toolbar-shell">
+    <div id="eraser-toolbar"
+         class="eraser-toolbar"
+         role="toolbar"
+         focusgroup="toolbar wrap"
+         aria-label="Herramientas del borrador de fondo"
+         aria-controls="eraser-canvas">
 
-    {# Grupo A: Modos del Lápiz y Navegación #}
-    <div class="eraser-tool-group" role="group" aria-label="Modo de lápiz">
-      <button type="button"
-              id="eraser-tool-erase"
-              class="eraser-tool-btn is-active"
-              data-tool="erase"
-              aria-pressed="true"
-              title="Lápiz Borrador: borra directamente donde pases el lápiz">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M20 20H7L3 16a1 1 0 0 1 0-1.41l9.59-9.59a2 2 0 0 1 2.82 0l5.18 5.18a2 2 0 0 1 0 2.82L13 20"></path>
-          <path d="M6.5 11.5l6 6"></path>
-        </svg>
-        <span>Borrador</span>
-      </button>
+      {# Grupo A: Modos del Lápiz, Recorte por Lazo y Navegación #}
+      <div class="eraser-tool-group" role="group" aria-label="Modo de borrado">
+        <button type="button"
+                id="eraser-tool-erase"
+                class="eraser-tool-btn is-active"
+                data-tool="erase"
+                aria-pressed="true"
+                title="Lápiz Borrador: borra directamente donde pases el lápiz">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20 20H7L3 16a1 1 0 0 1 0-1.41l9.59-9.59a2 2 0 0 1 2.82 0l5.18 5.18a2 2 0 0 1 0 2.82L13 20"></path>
+            <path d="M6.5 11.5l6 6"></path>
+          </svg>
+          <span>Borrador</span>
+        </button>
 
-      <button type="button"
-              id="eraser-tool-select"
-              class="eraser-tool-btn"
-              data-tool="select"
-              aria-pressed="false"
-              title="Lápiz de Selección: pinta con rojo qué áreas deseas eliminar y luego confirma">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 19l7-7 3 3-7 7-3-3z"></path>
-          <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path>
-          <path d="M2 2l7.586 7.586"></path>
-        </svg>
-        <span>Selección</span>
-      </button>
+        <button type="button"
+                id="eraser-tool-lasso"
+                class="eraser-tool-btn"
+                data-tool="lasso"
+                aria-pressed="false"
+                title="Encerrar sujeto: dibuja una línea rodeando lo que quieres conservar y todo lo de afuera se borrará al soltar">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <ellipse cx="12" cy="10.5" rx="8.5" ry="6.5" stroke-dasharray="3.5 2.5"></ellipse>
+            <path d="M7 16.5c0 2.2 2 4 5 4s4.5-1.5 4.5-3.2"></path>
+            <circle cx="7" cy="16.5" r="1.4" fill="currentColor" stroke="none"></circle>
+          </svg>
+          <span>Encerrar</span>
+        </button>
 
-      <button type="button"
-              id="eraser-tool-restore"
-              class="eraser-tool-btn"
-              data-tool="restore"
-              aria-pressed="false"
-              title="Lápiz Restaurar: recupera la imagen original donde pases el lápiz">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M9.06 11.9l8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"></path>
-          <path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"></path>
-        </svg>
-        <span>Restaurar</span>
-      </button>
+        <button type="button"
+                id="eraser-tool-select"
+                class="eraser-tool-btn"
+                data-tool="select"
+                aria-pressed="false"
+                title="Lápiz de Selección: pinta con rojo qué áreas deseas eliminar y luego confirma">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 19l7-7 3 3-7 7-3-3z"></path>
+            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path>
+            <path d="M2 2l7.586 7.586"></path>
+          </svg>
+          <span>Selección</span>
+        </button>
 
-      <button type="button"
-              id="eraser-tool-pan"
-              class="eraser-tool-btn"
-              data-tool="pan"
-              aria-pressed="false"
-              title="Mover vista (también puedes mantener presionada la tecla Espacio)">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"></path>
-          <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"></path>
-          <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"></path>
-          <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"></path>
-        </svg>
-        <span>Mover</span>
-      </button>
+        <button type="button"
+                id="eraser-tool-restore"
+                class="eraser-tool-btn"
+                data-tool="restore"
+                aria-pressed="false"
+                title="Lápiz Restaurar: recupera la imagen original donde pases el lápiz">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M9.06 11.9l8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08"></path>
+            <path d="M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z"></path>
+          </svg>
+          <span>Restaurar</span>
+        </button>
+
+        <button type="button"
+                id="eraser-tool-pan"
+                class="eraser-tool-btn"
+                data-tool="pan"
+                aria-pressed="false"
+                title="Mover vista (también puedes mantener presionada la tecla Espacio)">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"></path>
+            <path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"></path>
+            <path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"></path>
+            <path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"></path>
+          </svg>
+          <span>Mover</span>
+        </button>
+      </div>
+
+      <span class="eraser-toolbar-separator" role="separator" aria-orientation="vertical"></span>
+
+      {# Grupo B: Historial, Zoom y Contraste de Fondo #}
+      <div class="eraser-utility-group">
+        <div class="eraser-icon-cluster" role="group" aria-label="Historial de edición">
+          <button type="button" id="eraser-undo-btn" class="eraser-icon-btn" title="Deshacer trazo (Ctrl+Z)" aria-label="Deshacer último trazo" aria-disabled="true">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 7v6h6"></path>
+              <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
+            </svg>
+          </button>
+          <button type="button" id="eraser-redo-btn" class="eraser-icon-btn" title="Rehacer trazo (Ctrl+Y)" aria-label="Rehacer trazo" aria-disabled="true">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 7v6h-6"></path>
+              <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"></path>
+            </svg>
+          </button>
+          <button type="button" id="eraser-reset-btn" class="eraser-icon-btn" title="Restaurar imagen original" aria-label="Restaurar imagen original" aria-disabled="true">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="1 4 1 10 7 10"></polyline>
+              <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+            </svg>
+          </button>
+        </div>
+
+        <span class="eraser-toolbar-separator" role="separator" aria-orientation="vertical"></span>
+
+        <div class="eraser-icon-cluster" role="group" aria-label="Control de zoom">
+          <button type="button" id="eraser-zoom-out-btn" class="eraser-icon-btn" title="Alejar zoom" aria-label="Alejar zoom">−</button>
+          <button type="button" id="eraser-zoom-reset-btn" class="eraser-zoom-readout" title="Restablecer zoom al 100%" aria-label="Restablecer zoom al 100%">100%</button>
+          <button type="button" id="eraser-zoom-in-btn" class="eraser-icon-btn" title="Acercar zoom" aria-label="Acercar zoom">+</button>
+        </div>
+
+        <span class="eraser-toolbar-separator" role="separator" aria-orientation="vertical"></span>
+
+        <div class="eraser-icon-cluster" role="group" aria-label="Fondo de vista previa">
+          <button type="button" class="eraser-swatch-btn is-active" data-preview-bg="checker" title="Fondo ajedrez transparente" aria-label="Vista previa con cuadrícula transparente" aria-pressed="true"></button>
+          <button type="button" class="eraser-swatch-btn is-dark-swatch" data-preview-bg="dark" title="Fondo oscuro para revisar bordes claros" aria-label="Vista previa con fondo oscuro" aria-pressed="false"></button>
+          <button type="button" class="eraser-swatch-btn is-light-swatch" data-preview-bg="light" title="Fondo blanco para revisar bordes oscuros" aria-label="Vista previa con fondo claro" aria-pressed="false"></button>
+        </div>
+      </div>
+
     </div>
 
-    {# Grupo B: Tamaño del Lápiz y Suavizado de Borde #}
-    <div class="eraser-sliders-group">
+    {# Grupo C: Tamaño del Lápiz y Suavizado de Borde (fuera de focusgroup para conservar flechas nativas de <input type="range">) #}
+    <div class="eraser-sliders-group" role="group" aria-label="Ajustes de tamaño y suavizado del lápiz">
       <div class="eraser-slider-control">
         <label for="eraser-brush-size" class="eraser-slider-label">
           <span>Tamaño</span>
@@ -105,43 +169,6 @@
                aria-valuetext="15%">
       </div>
     </div>
-
-    {# Grupo C: Historial, Zoom y Contraste de Fondo #}
-    <div class="eraser-utility-group">
-      <div class="eraser-icon-cluster" role="group" aria-label="Historial de edición">
-        <button type="button" id="eraser-undo-btn" class="eraser-icon-btn" title="Deshacer trazo (Ctrl+Z)" aria-label="Deshacer último trazo" disabled>
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M3 7v6h6"></path>
-            <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"></path>
-          </svg>
-        </button>
-        <button type="button" id="eraser-redo-btn" class="eraser-icon-btn" title="Rehacer trazo (Ctrl+Y)" aria-label="Rehacer trazo" disabled>
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M21 7v6h-6"></path>
-            <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"></path>
-          </svg>
-        </button>
-        <button type="button" id="eraser-reset-btn" class="eraser-icon-btn" title="Restaurar imagen original" aria-label="Restaurar imagen original" disabled>
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polyline points="1 4 1 10 7 10"></polyline>
-            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
-          </svg>
-        </button>
-      </div>
-
-      <div class="eraser-icon-cluster" role="group" aria-label="Control de zoom">
-        <button type="button" id="eraser-zoom-out-btn" class="eraser-icon-btn" title="Alejar zoom" aria-label="Alejar zoom">−</button>
-        <button type="button" id="eraser-zoom-reset-btn" class="eraser-zoom-readout" title="Restablecer zoom al 100%" aria-label="Restablecer zoom al 100%">100%</button>
-        <button type="button" id="eraser-zoom-in-btn" class="eraser-icon-btn" title="Acercar zoom" aria-label="Acercar zoom">+</button>
-      </div>
-
-      <div class="eraser-icon-cluster" role="group" aria-label="Fondo de vista previa">
-        <button type="button" class="eraser-swatch-btn is-active" data-preview-bg="checker" title="Fondo ajedrez transparente" aria-label="Vista previa con cuadrícula transparente" aria-pressed="true"></button>
-        <button type="button" class="eraser-swatch-btn is-dark-swatch" data-preview-bg="dark" title="Fondo oscuro para revisar bordes claros" aria-label="Vista previa con fondo oscuro" aria-pressed="false"></button>
-        <button type="button" class="eraser-swatch-btn is-light-swatch" data-preview-bg="light" title="Fondo blanco para revisar bordes oscuros" aria-label="Vista previa con fondo claro" aria-pressed="false"></button>
-      </div>
-    </div>
-
   </div>
 
   {# 2. Lienzo Interactivo con Panorámica 2D (`scroll-axis-lock: none`) #}
