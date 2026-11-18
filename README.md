@@ -9,22 +9,27 @@ Aplicación web minimalista (inspirada en el lenguaje de diseño de Google Mater
 ```text
 ConvertidorWeb/
 ├── requirements.txt           # Dependencias del servidor Python (FastAPI, Uvicorn, Jinja2)
+├── vercel.json                # Configuración de despliegue zero-config para FastAPI en Vercel
 ├── README.md                  # Documentación técnica y educativa del proyecto
-└── app/
-    ├── __init__.py
-    ├── config.py              # Catálogo centralizado de formatos de entrada, salida y presets
-    ├── main.py                # Servidor FastAPI: rutas HTML ("/", "/convertir") y API ("/api/formats")
-    ├── templates/             # Plantillas Jinja2 con herencia
-    │   ├── base.html          # Plantilla maestra (barra de navegación, tema claro/oscuro, pie de página)
-    │   ├── index.html         # Página de Inicio ("/") que explica la web y la gestión de RAM
-    │   └── converter.html     # Herramienta ("/convertir") con el Botón Gigante "De qué a qué"
-    └── static/                # Archivos servidos al navegador
-        ├── css/
-        │   └── styles.css     # Sistema de diseño Google Material 3 con variables CSS y light-dark()
-        └── js/
-            ├── theme.js       # Controlador del tema claro/oscuro sincronizado con <meta name="color-scheme">
-            ├── app.js         # Lógica del Botón Gigante, subida Drag & Drop y cola secuencial 1-a-1
-            └── worker.js      # Web Worker aislado: OffscreenCanvas + @jsquash (WebAssembly bajo demanda)
+├── api/
+│   └── index.py               # Punto de entrada ASGI Serverless con resolución automática de sys.path
+├── app/
+│   ├── __init__.py
+│   ├── config.py              # Catálogo centralizado de formatos de entrada (incl. ICO), salida y presets
+│   ├── main.py                # Servidor FastAPI: rutas HTML ("/", "/convertir"), API ("/api/formats", "/health", "/favicon.ico") y rutas relativas
+│   ├── templates/             # Plantillas Jinja2 con herencia y rutas relativas a la raíz (anti Mixed-Content)
+│   │   ├── base.html          # Plantilla maestra (barra de navegación, favicon SVG, tema claro/oscuro, pie de página)
+│   │   ├── index.html         # Página de Inicio ("/") que explica la web y la gestión de RAM
+│   │   └── converter.html     # Herramienta ("/convertir") con el Botón Gigante "De qué a qué"
+│   └── static/                # Archivos servidos al navegador / CDN
+│       ├── css/
+│       │   └── styles.css     # Sistema de diseño Google Material 3 con variables CSS y light-dark()
+│       └── js/
+│           ├── theme.js       # Controlador del tema claro/oscuro sincronizado con <meta name="color-scheme">
+│           ├── app.js         # Lógica del Botón Gigante, subida Drag & Drop, cola 1-a-1 y respaldo en hilo principal
+│           └── worker.js      # Web Worker aislado: OffscreenCanvas + @jsquash single-threaded (AVIF/WebP WASM) + ICO/BMP
+└── tests/
+    └── test_app.py            # Suite de pruebas automatizadas (Pytest + HTTPX TestClient)
 ```
 
 ---
@@ -33,18 +38,18 @@ ConvertidorWeb/
 
 1. **Cero cadenas Base64 (`FileReader.readAsDataURL`)**:
    En lugar de transformar la imagen en una cadena de texto gigante en la memoria de JavaScript (lo cual incrementa el peso un +33%), pasamos la referencia binaria (`Blob` / `File`) directamente al motor nativo con `createImageBitmap()`.
-2. **Hilo secundario dedicado (`worker.js`)**:
-   Toda la decodificación y codificación ocurre fuera del hilo principal usando `OffscreenCanvas`, evitando que la interfaz se congele.
-3. **Liberación explícita e inmediata (`bitmap.close()`)**:
-   Apenas se dibuja la imagen en el `OffscreenCanvas`, llamamos a `bitmap.close()` antes de iniciar la compresión del archivo de salida, y al terminar reducimos el lienzo a `1×1` píxeles.
+2. **Hilo secundario dedicado (`worker.js`) con respaldo automático**:
+   Toda la decodificación y codificación ocurre fuera del hilo principal usando `OffscreenCanvas`, evitando que la interfaz se congele. Si un archivo vectorial (`SVG`), icono (`ICO`) o imagen especial requiere decodificación DOM, `app.js` lo rasteriza en el hilo principal y transfiere el `ImageBitmap` sin copias (`0-copy`).
+3. **Liberación explícita e inmediata (`bitmap.close()` y `canvas = 1×1`)**:
+   Apenas se dibuja la imagen en el `OffscreenCanvas`, llamamos a `bitmap.close()`, y justo después de extraer `getImageData()` vaciamos el `OffscreenCanvas` (`1×1`) **antes** de reservar el búfer de salida en WebAssembly o BMP.
 4. **Cola estrictamente secuencial (1 por 1)**:
    Si el usuario arrastra varias imágenes, `app.js` las procesa en fila de una en una. Nunca se acumulan múltiples mapas de bits descomprimidos en la RAM al mismo tiempo.
-5. **Carga bajo demanda de WebAssembly (`@jsquash`)**:
-   Para formatos estándar (`PNG`, `JPG`, `WebP`) usamos el codificador nativo en C++ del navegador. Para formatos de próxima generación como `AVIF`, el Worker importa `@jsquash/avif` solo cuando el usuario elige ese formato.
+5. **Carga bajo demanda de WebAssembly (`@jsquash` Single-Threaded)**:
+   Para formatos estándar (`PNG`, `JPG`, `WebP`) usamos el codificador nativo en C++ del navegador (o `@jsquash/webp` con `lossless: 1, exact: 1` para WebP sin pérdida). Para `AVIF`, el Worker instancia directamente el módulo WebAssembly single-threaded (`avif_enc.wasm`) con control real de cuantización (`cqLevel: 0` sin pérdida y `subsample: 3` YUV444) sin crear sub-workers cross-origin.
 
 ---
 
-## Cómo ejecutar el proyecto
+## Cómo ejecutar el proyecto y las pruebas
 
 1. **Instalar dependencias** (en un entorno virtual):
    ```bash
@@ -58,7 +63,13 @@ ConvertidorWeb/
    uvicorn app.main:app --reload --port 8000
    ```
 
-3. **Abrir en el navegador**:
+3. **Ejecutar la suite de pruebas automatizadas**:
+   ```bash
+   pytest -v
+   ```
+
+4. **Abrir en el navegador**:
    - Página de Inicio y Explicación: `http://localhost:8000/`
    - Convertidor Interactivo: `http://localhost:8000/convertir`
    - Catálogo JSON (API): `http://localhost:8000/api/formats`
+   - Estado del Servidor: `http://localhost:8000/health`

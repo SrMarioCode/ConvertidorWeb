@@ -68,6 +68,7 @@
                       data-mime="{{ fmt.mime }}"
                       data-ext="{{ fmt.extension }}"
                       data-engine="{{ fmt.engine }}"
+                      data-lossless="{{ 'true' if fmt.lossless_capable else 'false' }}"
                       {% if fmt.id == selected_target %}selected{% endif %}>
                 {{ fmt.name }} (.{{ fmt.extension }})
               </option>
@@ -112,7 +113,7 @@
     <input type="file"
            id="file-input"
            class="visually-hidden"
-           accept="image/png,image/jpeg,image/webp,image/avif,image/svg+xml,image/bmp,image/gif,image/x-icon,.ico"
+           accept="image/png,image/jpeg,image/webp,image/avif,image/svg+xml,image/bmp,image/gif,image/x-icon,image/vnd.microsoft.icon,image/apng,.ico,.jfif,.pjpeg,.pjp,.apng"
            multiple>
 
     {# Tarjeta Drag & Drop #}
@@ -192,5 +193,5 @@
 
 {% block scripts %}
   {# Cargamos la lógica del convertidor solo en la página `/convertir` #}
-  <script src="{{ url_for('static', path='js/app.js') }}" defer></script>
+  <script src="/static/js/app.js" defer></script>
 {% endblock %}

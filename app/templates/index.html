@@ -26,7 +26,7 @@
       consumir el mínimo absoluto de memoria RAM.
     </p>
 
-    <a href="{{ url_for('converter') }}" id="hero-open-converter-btn" class="giant-cta-button">
+    <a href="/convertir" id="hero-open-converter-btn" class="giant-cta-button">
       <span>Elegir qué tipo de imagen convertir</span>
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <line x1="5" y1="12" x2="19" y2="12"></line>
@@ -64,7 +64,7 @@
     <div class="presets-bar">
       <span class="presets-label">Accesos directos:</span>
       {% for preset in quick_presets %}
-        <a href="{{ url_for('converter') }}?de={{ preset.source }}&a={{ preset.target }}"
+        <a href="/convertir?de={{ preset.source }}&a={{ preset.target }}"
            class="preset-chip"
            title="{{ preset.subtitle }}">
           {{ preset.label }}
@@ -137,7 +137,7 @@
 
     <div class="formats-grid">
       {% for fmt in output_formats %}
-        <a href="{{ url_for('converter') }}?de=auto&a={{ fmt.id }}"
+        <a href="/convertir?de=auto&a={{ fmt.id }}"
            class="format-card"
            id="home-format-card-{{ fmt.id }}">
           <div>

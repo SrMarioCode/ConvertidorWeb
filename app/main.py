@@ -17,10 +17,12 @@ Arquitectura de este archivo:
 """
 
 from pathlib import Path
+from typing import Any
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import INPUT_FORMATS, OUTPUT_FORMATS, QUICK_PRESETS
 
@@ -30,6 +32,15 @@ from app.config import INPUT_FORMATS, OUTPUT_FORMATS, QUICK_PRESETS
 BASE_DIR = Path(__file__).resolve().parent
 TEMPLATES_DIR = BASE_DIR / "templates"
 STATIC_DIR = BASE_DIR / "static"
+
+SVG_FAVICON = (
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+    'stroke="#0b57d0" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">'
+    '<rect x="3" y="3" width="18" height="18" rx="4" ry="4"/>'
+    '<circle cx="8.5" cy="8.5" r="1.5"/>'
+    '<polyline points="21 15 16 10 5 21"/>'
+    "</svg>"
+)
 
 # =============================================================================
 # 2. Instancia principal de FastAPI
@@ -47,11 +58,19 @@ app = FastAPI(
 # =============================================================================
 # 3. Archivos estáticos y motor de plantillas Jinja2
 # =============================================================================
-# `app.mount("/static", ...)` permite que en el HTML usemos `url_for('static', path=...)`
+# `app.mount("/static", ...)` sirve las hojas de estilo y scripts en `/static/*`
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # `Jinja2Templates` compila las plantillas HTML y resuelve bloques `{% extends %}`
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+# Sobrescribimos `url_for` en el entorno global de Jinja2 para que siempre
+# devuelva rutas relativas a la raíz (`/`, `/convertir`, `/static/...`) en lugar
+# de URLs absolutas `http://...`, evitando bloqueos de Mixed Content detrás de
+# proxies inversos HTTPS o despliegues serverless como Vercel.
+templates.env.globals["url_for"] = (
+    lambda name, **path_params: str(app.url_path_for(name, **path_params))
+)
 
 
 # =============================================================================
@@ -79,6 +98,17 @@ async def home_page(request: Request) -> HTMLResponse:
     )
 
 
+@app.get("/api/index", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/api/index.py", response_class=HTMLResponse, include_in_schema=False)
+async def api_index_alias(request: Request) -> HTMLResponse:
+    """
+    Rutas defensivas de compatibilidad para entornos Serverless (`/api/index`):
+    Delegan directamente en la página de inicio para evitar errores 404 si se
+    invoca el punto de entrada serverless directamente.
+    """
+    return await home_page(request)
+
+
 @app.get("/convertir", response_class=HTMLResponse, name="converter")
 async def converter_page(
     request: Request,
@@ -103,6 +133,10 @@ async def converter_page(
     selected_source = de.lower() if de.lower() in valid_inputs else "auto"
     selected_target = a.lower() if a.lower() in valid_outputs else "webp"
 
+    # Evitamos colisiones donde el formato de origen y destino sean idénticos (ej. ?de=png&a=png)
+    if selected_source == selected_target:
+        selected_target = "png" if selected_source == "webp" else "webp"
+
     return templates.TemplateResponse(
         request=request,
         name="converter.html",
@@ -119,25 +153,34 @@ async def converter_page(
 
 
 # =============================================================================
-# 5. Rutas de API JSON (Metadatos y Estado del Servidor)
+# 5. Rutas de API JSON, Favicon y Manejo Personalizado de Errores 404
 # =============================================================================
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> Response:
+    """Sirve un icono vectorial limpio para evitar errores 404 en el navegador."""
+    return Response(content=SVG_FAVICON, media_type="image/svg+xml")
+
+
 @app.get("/api/formats", response_class=JSONResponse, name="api_formats")
 async def get_supported_formats() -> JSONResponse:
     """
     Devuelve en formato JSON el catálogo completo de formatos de entrada y salida,
     junto con detalles técnicos sobre el motor de conversión en el cliente.
     """
+    engine_info = {
+        "execution": "Client-Side (Browser Web Worker)",
+        "native_api": "createImageBitmap + OffscreenCanvas.convertToBlob()",
+        "wasm_codecs": "@jsquash/avif & @jsquash/webp (Lazy-loaded on demand)",
+        "ram_strategy": "Sequential 1-by-1 queue + explicit bitmap.close() deallocation",
+    }
     return JSONResponse(
         content={
-            "engine_architecture": {
-                "execution": "Client-Side (Browser Web Worker)",
-                "native_api": "createImageBitmap + OffscreenCanvas.convertToBlob()",
-                "wasm_codecs": "@jsquash/avif & @jsquash/webp (Lazy-loaded on demand)",
-                "ram_strategy": "Sequential 1-by-1 queue + explicit bitmap.close() deallocation",
-            },
+            "engine_architecture": engine_info,
+            "engine": engine_info,
             "input_formats": INPUT_FORMATS,
             "output_formats": OUTPUT_FORMATS,
             "quick_presets": QUICK_PRESETS,
+            "popular_conversions": QUICK_PRESETS,
         }
     )
 
@@ -146,3 +189,30 @@ async def get_supported_formats() -> JSONResponse:
 async def health_check() -> JSONResponse:
     """Endpoint ligero para verificar que el servidor FastAPI está activo."""
     return JSONResponse(content={"status": "ok", "service": "ConvertidorWeb"})
+
+
+@app.exception_handler(404)
+async def custom_404_handler(
+    request: Request, exc: StarletteHTTPException | Exception
+) -> Any:
+    """
+    Manejador personalizado para rutas no encontradas (404):
+    - Si es una ruta de API (`/api/*`), devuelve JSON `{"detail": "Not Found"}`.
+    - Si es navegación del usuario en el navegador, muestra la interfaz principal
+      con código de estado 404 para no romper la experiencia visual.
+    """
+    if request.url.path.startswith("/api/"):
+        return JSONResponse(status_code=404, content={"detail": "Not Found"})
+
+    return templates.TemplateResponse(
+        request=request,
+        name="index.html",
+        context={
+            "active_page": "home",
+            "page_title": "Página no encontrada — ConvertidorWeb",
+            "input_formats": INPUT_FORMATS,
+            "output_formats": OUTPUT_FORMATS,
+            "quick_presets": QUICK_PRESETS,
+        },
+        status_code=404,
+    )

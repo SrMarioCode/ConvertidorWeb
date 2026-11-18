@@ -13,3 +13,9 @@ __pycache__/
 .vscode/
 .idea/
 *.log
+
+# Caché de pruebas, despliegue y metadatos de agentes
+.pytest_cache/
+.vercel/
+.agents/
+PROJECT.md

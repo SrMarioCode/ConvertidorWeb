@@ -23,6 +23,7 @@
   const targetSelect = document.getElementById("target-format-select");
   const swapBtn = document.getElementById("swap-formats-btn");
   const capsuleActionBtn = document.getElementById("capsule-action-btn");
+  const capsuleActionText = document.getElementById("capsule-action-text");
   const presetBtns = document.querySelectorAll(".js-preset-btn");
 
   const fileInput = document.getElementById("file-input");
@@ -33,6 +34,7 @@
   const demoImageBtn = document.getElementById("demo-image-btn");
 
   const losslessCheckbox = document.getElementById("lossless-checkbox");
+  const losslessLabelSpan = losslessCheckbox?.parentElement?.querySelector("span");
   const customQualityWrap = document.getElementById("custom-quality-wrap");
   const qualityRange = document.getElementById("quality-range");
   const qualityValueLabel = document.getElementById("quality-value-label");
@@ -99,9 +101,14 @@
   }
 
   // ==========================================================================
-  // 2. INICIALIZACIÓN DEL WEB WORKER Y ESTADO DE LA COLA SECUENCIAL
+  // 2. INICIALIZACIÓN PROTEGIDA DEL WEB WORKER Y ESTADO DE LA COLA SECUENCIAL
   // ==========================================================================
-  const worker = new Worker("/static/js/worker.js", { type: "module" });
+  let worker = null;
+  try {
+    worker = new Worker("/static/js/worker.js", { type: "module" });
+  } catch (_) {
+    worker = null;
+  }
 
   /**
    * Lista de tareas de conversión en memoria.
@@ -111,6 +118,7 @@
   const itemsMap = new Map();
   const pendingQueue = [];
   let isWorkerBusy = false;
+  let activeItemId = null;
   let itemCounter = 0;
 
   /**
@@ -134,8 +142,14 @@
   function detectFormatFromFile(file) {
     const mime = (file.type || "").toLowerCase();
     const name = (file.name || "").toLowerCase();
-    if (mime.includes("png") || name.endsWith(".png")) return "png";
-    if (mime.includes("jpeg") || mime.includes("jpg") || name.endsWith(".jpg") || name.endsWith(".jpeg")) return "jpeg";
+    if (mime.includes("png") || name.endsWith(".png") || name.endsWith(".apng")) return "png";
+    if (
+      mime.includes("jpeg") ||
+      mime.includes("jpg") ||
+      /\.(jpe?g|jfif|pjpeg|pjp)$/i.test(name)
+    ) {
+      return "jpeg";
+    }
     if (mime.includes("webp") || name.endsWith(".webp")) return "webp";
     if (mime.includes("avif") || name.endsWith(".avif")) return "avif";
     if (mime.includes("svg") || name.endsWith(".svg")) return "svg";
@@ -162,21 +176,58 @@
   function syncCapsuleUI() {
     const sourceOption = sourceSelect.options[sourceSelect.selectedIndex];
     const targetOption = targetSelect.options[targetSelect.selectedIndex];
+    if (!sourceOption || !targetOption) return;
 
     const sourceId = sourceSelect.value;
     const targetId = targetSelect.value;
-    const sourceLabel = sourceId === "auto" ? "tu imagen" : `tu imagen ${sourceOption.text.trim()}`;
+    const sourceShort =
+      sourceId === "auto"
+        ? "Auto"
+        : sourceOption.text.split("(")[0].split("/")[0].trim();
+    const sourceLabel =
+      sourceId === "auto" ? "tu imagen" : `tu imagen ${sourceOption.text.trim()}`;
     const targetLabel = targetOption.text.split("(")[0].trim();
     const targetEngine = targetOption.dataset.engine || "OffscreenCanvas";
 
     // Actualizamos el filtro `accept` del input de archivos
-    if (sourceOption && sourceOption.dataset.accept) {
+    if (sourceOption.dataset.accept) {
       fileInput.setAttribute("accept", sourceOption.dataset.accept);
+    }
+
+    // Actualizamos el texto del botón dentro de la Cápsula Gigante ("De qué a qué")
+    if (capsuleActionText) {
+      capsuleActionText.textContent = `Subir imagen (${sourceShort} ➔ ${targetLabel})`;
     }
 
     // Actualizamos los textos dinámicos del área de subida
     dropzoneTitle.textContent = `Sube o arrastra ${sourceLabel} para convertirla a ${targetLabel}`;
     dropzoneHint.textContent = `Motor activo: ${targetEngine} · Procesamiento local 1 a 1 sin saturar la memoria RAM.`;
+
+    // Adaptamos la barra de calidad según capacidades del formato de destino
+    const strictlyLossless =
+      targetId === "png" || targetId === "ico" || targetId === "bmp";
+    const isLossyOnly = targetOption.dataset.lossless === "false";
+
+    if (strictlyLossless) {
+      losslessCheckbox.checked = true;
+      losslessCheckbox.disabled = true;
+      if (losslessLabelSpan) {
+        losslessLabelSpan.textContent = `100% Sin pérdida garantizado (${targetLabel})`;
+      }
+      hideElement(customQualityWrap);
+    } else {
+      losslessCheckbox.disabled = false;
+      if (losslessLabelSpan) {
+        losslessLabelSpan.textContent = isLossyOnly
+          ? "Máxima calidad (100%)"
+          : "Máxima calidad / Sin pérdida (100%)";
+      }
+      if (losslessCheckbox.checked) {
+        hideElement(customQualityWrap);
+      } else {
+        showElement(customQualityWrap);
+      }
+    }
 
     // Resaltamos el chip de acceso rápido si coincide con la selección actual
     presetBtns.forEach((btn) => {
@@ -186,15 +237,31 @@
     });
   }
 
-  sourceSelect.addEventListener("change", syncCapsuleUI);
-  targetSelect.addEventListener("change", syncCapsuleUI);
+  sourceSelect.addEventListener("change", () => {
+    if (
+      sourceSelect.value !== "auto" &&
+      sourceSelect.value === targetSelect.value
+    ) {
+      targetSelect.value = sourceSelect.value === "webp" ? "png" : "webp";
+    }
+    syncCapsuleUI();
+  });
+
+  targetSelect.addEventListener("change", () => {
+    if (
+      sourceSelect.value !== "auto" &&
+      sourceSelect.value === targetSelect.value
+    ) {
+      sourceSelect.value = targetSelect.value === "png" ? "webp" : "png";
+    }
+    syncCapsuleUI();
+  });
 
   // Botón de intercambio rápido (Origen ⇄ Destino)
   swapBtn.addEventListener("click", () => {
     const currentSource = sourceSelect.value;
     const currentTarget = targetSelect.value;
 
-    // Verificamos si el formato de origen existe como destino válido
     const canTargetAcceptSource = Array.from(targetSelect.options).some(
       (opt) => opt.value === currentSource
     );
@@ -207,9 +274,16 @@
     }
     if (canTargetAcceptSource) {
       targetSelect.value = currentSource;
-    } else if (currentSource === "auto") {
-      // Si estaba en 'Auto', ponemos PNG como destino al intercambiar
+    } else {
       targetSelect.value = currentTarget === "png" ? "webp" : "png";
+    }
+
+    // Garantizamos que nunca queden Origen y Destino iguales tras intercambiar
+    if (
+      sourceSelect.value !== "auto" &&
+      sourceSelect.value === targetSelect.value
+    ) {
+      targetSelect.value = sourceSelect.value === "webp" ? "png" : "webp";
     }
 
     syncCapsuleUI();
@@ -244,25 +318,85 @@
   });
 
   // ==========================================================================
-  // 4. RASTERIZACIÓN LIGERA PARA ARCHIVOS VECTORIALES SVG
+  // 4. DECODIFICACIÓN Y RASTERIZACIÓN EN HILO PRINCIPAL (SVG, ICO Y RESPALDO)
   // ==========================================================================
   /**
-   * Algunos motores de navegador no permiten `createImageBitmap(svgBlob)` dentro
-   * de un Web Worker. Para garantizar compatibilidad del 100% con SVG, lo
-   * dibujamos en un lienzo temporal en el hilo principal y transferimos el
-   * `ImageBitmap` al Worker sin copiar memoria.
+   * Extrae dimensiones intrínsecas (`width`, `height` o `viewBox`) de un archivo SVG
+   * para conservar la proporción exacta incluso cuando el `<svg>` solo define `viewBox`.
    *
-   * @param {File} svgFile
+   * @param {File|Blob} svgBlob
+   * @returns {Promise<{width: number, height: number} | null>}
+   */
+  async function parseSvgDimensions(svgBlob) {
+    try {
+      const text = await svgBlob.text();
+      const viewBoxMatch = text.match(
+        /viewBox\s*=\s*["']\s*([-\d.]+)[,\s]+([-\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)\s*["']/i
+      );
+      const widthMatch = text.match(
+        /\bwidth\s*=\s*["']\s*([\d.]+)\s*(?:px)?\s*["']/i
+      );
+      const heightMatch = text.match(
+        /\bheight\s*=\s*["']\s*([\d.]+)\s*(?:px)?\s*["']/i
+      );
+
+      let w = widthMatch ? parseFloat(widthMatch[1]) : 0;
+      let h = heightMatch ? parseFloat(heightMatch[1]) : 0;
+
+      if ((!w || !h) && viewBoxMatch) {
+        const vbW = parseFloat(viewBoxMatch[3]);
+        const vbH = parseFloat(viewBoxMatch[4]);
+        if (vbW > 0 && vbH > 0) {
+          if (w > 0 && !h) {
+            h = Math.round(w * (vbH / vbW));
+          } else if (h > 0 && !w) {
+            w = Math.round(h * (vbW / vbH));
+          } else {
+            const scale = vbW < 512 && vbH < 512 ? Math.min(1024 / vbW, 1024 / vbH) : 1;
+            w = Math.max(1, Math.round(vbW * scale));
+            h = Math.max(1, Math.round(vbH * scale));
+          }
+        }
+      }
+
+      if (w > 0 && h > 0) {
+        return { width: Math.round(w), height: Math.round(h) };
+      }
+    } catch (_) {
+      // Ignoramos errores de lectura de texto y usamos dimensiones del elemento <img>
+    }
+    return null;
+  }
+
+  /**
+   * Decodifica cualquier imagen (`SVG`, `ICO` o formatos que fallen en `createImageBitmap`
+   * del Worker) usando el decodificador `<img>` del hilo principal y devuelve un `ImageBitmap`.
+   *
+   * @param {File} file
    * @returns {Promise<ImageBitmap>}
    */
-  function rasterizeSvgToBitmap(svgFile) {
+  async function decodeFileToBitmapOnMainThread(file) {
+    const isSvg =
+      file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg");
+
+    let sourceBlob = file;
+    let svgDims = null;
+    if (isSvg) {
+      if (file.type !== "image/svg+xml") {
+        sourceBlob = new Blob([file], { type: "image/svg+xml" });
+      }
+      svgDims = await parseSvgDimensions(sourceBlob);
+    }
+
     return new Promise((resolve, reject) => {
-      const tempUrl = URL.createObjectURL(svgFile);
+      const tempUrl = URL.createObjectURL(sourceBlob);
       const img = new Image();
       img.onload = async () => {
         try {
-          const width = img.naturalWidth || 1024;
-          const height = img.naturalHeight || 1024;
+          const width =
+            (svgDims && svgDims.width) || img.naturalWidth || img.width || 1024;
+          const height =
+            (svgDims && svgDims.height) || img.naturalHeight || img.height || 1024;
           const tempCanvas = document.createElement("canvas");
           tempCanvas.width = width;
           tempCanvas.height = height;
@@ -281,10 +415,133 @@
       };
       img.onerror = () => {
         URL.revokeObjectURL(tempUrl);
-        reject(new Error("No se pudo interpretar el archivo vectorial SVG."));
+        reject(
+          new Error(
+            isSvg
+              ? "No se pudo interpretar el archivo vectorial SVG."
+              : "No se pudo decodificar el archivo de imagen."
+          )
+        );
       };
       img.src = tempUrl;
     });
+  }
+
+  const rasterizeSvgToBitmap = decodeFileToBitmapOnMainThread;
+
+  /**
+   * Respaldo completo de conversión en el hilo principal (`<canvas>`) en caso de que
+   * el Web Worker no esté disponible o sufra un error no recuperable.
+   *
+   * @param {object} item
+   */
+  async function convertOnMainThread(item) {
+    const startTime = performance.now();
+    const bitmap = await decodeFileToBitmapOnMainThread(item.file);
+
+    let targetWidth = bitmap.width;
+    let targetHeight = bitmap.height;
+    if (item.targetFormat === "ico" && (targetWidth > 256 || targetHeight > 256)) {
+      const scale = Math.min(256 / targetWidth, 256 / targetHeight);
+      targetWidth = Math.max(1, Math.round(targetWidth * scale));
+      targetHeight = Math.max(1, Math.round(targetHeight * scale));
+    }
+
+    const canvas = document.createElement("canvas");
+    canvas.width = targetWidth;
+    canvas.height = targetHeight;
+    const ctx = canvas.getContext("2d");
+
+    if (item.targetFormat === "jpeg") {
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, targetWidth, targetHeight);
+    }
+
+    ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight);
+    bitmap.close();
+
+    const normalizedQuality = item.lossless
+      ? 1.0
+      : Math.min(1, Math.max(0.5, item.quality / 100));
+
+    let outputBlob = null;
+    if (item.targetFormat === "bmp") {
+      const imgData = ctx.getImageData(0, 0, targetWidth, targetHeight);
+      canvas.width = 1;
+      canvas.height = 1;
+      const { width, height, data } = imgData;
+      const pixelArraySize = width * height * 4;
+      const headerTotal = 54;
+      const buffer = new ArrayBuffer(headerTotal + pixelArraySize);
+      const view = new DataView(buffer);
+      const bytes = new Uint8Array(buffer);
+      view.setUint8(0, 0x42);
+      view.setUint8(1, 0x4d);
+      view.setUint32(2, headerTotal + pixelArraySize, true);
+      view.setUint32(10, headerTotal, true);
+      view.setUint32(14, 40, true);
+      view.setInt32(18, width, true);
+      view.setInt32(22, -height, true);
+      view.setUint16(26, 1, true);
+      view.setUint16(28, 32, true);
+      view.setUint32(34, pixelArraySize, true);
+      let dst = headerTotal;
+      for (let i = 0; i < data.length; i += 4) {
+        bytes[dst] = data[i + 2];
+        bytes[dst + 1] = data[i + 1];
+        bytes[dst + 2] = data[i];
+        bytes[dst + 3] = data[i + 3];
+        dst += 4;
+      }
+      outputBlob = new Blob([buffer], { type: "image/bmp" });
+    } else if (item.targetFormat === "ico") {
+      const pngBlob = await new Promise((res) =>
+        canvas.toBlob(res, "image/png")
+      );
+      canvas.width = 1;
+      canvas.height = 1;
+      const pngBytes = new Uint8Array(await pngBlob.arrayBuffer());
+      const icoBytes = new Uint8Array(22 + pngBytes.byteLength);
+      const view = new DataView(icoBytes.buffer);
+      view.setUint16(2, 1, true);
+      view.setUint16(4, 1, true);
+      view.setUint8(6, targetWidth >= 256 ? 0 : targetWidth);
+      view.setUint8(7, targetHeight >= 256 ? 0 : targetHeight);
+      view.setUint16(10, 1, true);
+      view.setUint16(12, 32, true);
+      view.setUint32(14, pngBytes.byteLength, true);
+      view.setUint32(18, 22, true);
+      icoBytes.set(pngBytes, 22);
+      outputBlob = new Blob([icoBytes], { type: "image/x-icon" });
+    } else {
+      const mimeMap = {
+        png: "image/png",
+        jpeg: "image/jpeg",
+        webp: "image/webp",
+        avif: "image/avif",
+      };
+      const targetMime = mimeMap[item.targetFormat] || "image/png";
+      outputBlob = await new Promise((res) =>
+        canvas.toBlob(res, targetMime, normalizedQuality)
+      );
+      canvas.width = 1;
+      canvas.height = 1;
+    }
+
+    if (!outputBlob) {
+      throw new Error("No se pudo codificar la imagen en el navegador.");
+    }
+
+    if (item.downloadUrl) {
+      URL.revokeObjectURL(item.downloadUrl);
+    }
+    item.downloadUrl = URL.createObjectURL(outputBlob);
+    item.outputSize = outputBlob.size;
+    item.width = targetWidth;
+    item.height = targetHeight;
+    item.durationMs = Math.round(performance.now() - startTime);
+    item.engineUsed = "Canvas Principal (Modo Respaldo)";
+    updateItemCardFinished(item);
   }
 
   // ==========================================================================
@@ -310,10 +567,12 @@
 
     isWorkerBusy = true;
     const itemId = pendingQueue.shift();
+    activeItemId = itemId;
     const item = itemsMap.get(itemId);
 
     if (!item) {
       isWorkerBusy = false;
+      activeItemId = null;
       processNextInQueue();
       return;
     }
@@ -322,21 +581,34 @@
     updateItemCardStatus(item, "working", "Convirtiendo en Worker...");
 
     try {
-      const isSvg =
-        item.file.type === "image/svg+xml" ||
-        item.file.name.toLowerCase().endsWith(".svg");
+      if (!worker) {
+        await convertOnMainThread(item);
+        isWorkerBusy = false;
+        activeItemId = null;
+        processNextInQueue();
+        return;
+      }
 
-      if (isSvg) {
-        const svgBitmap = await rasterizeSvgToBitmap(item.file);
+      const lowerName = item.file.name.toLowerCase();
+      const shouldPreDecodeOnMainThread =
+        item._retriedOnMainThread ||
+        item.file.type === "image/svg+xml" ||
+        lowerName.endsWith(".svg") ||
+        item.file.type === "image/x-icon" ||
+        item.file.type === "image/vnd.microsoft.icon" ||
+        lowerName.endsWith(".ico");
+
+      if (shouldPreDecodeOnMainThread) {
+        const preDecodedBitmap = await rasterizeSvgToBitmap(item.file);
         worker.postMessage(
           {
             id: item.id,
-            transferredBitmap: svgBitmap,
+            transferredBitmap: preDecodedBitmap,
             targetFormat: item.targetFormat,
             lossless: item.lossless,
             quality: item.quality,
           },
-          [svgBitmap] // Transferencia de propiedad 0-copy al Worker
+          [preDecodedBitmap] // Transferencia de propiedad 0-copy al Worker
         );
       } else {
         worker.postMessage({
@@ -354,48 +626,100 @@
         err instanceof Error ? err.message : "Error al preparar la imagen"
       );
       isWorkerBusy = false;
+      activeItemId = null;
       processNextInQueue();
     }
   }
 
-  // Respuesta del Web Worker cuando termina de convertir una imagen
-  worker.addEventListener("message", (event) => {
-    const {
-      id,
-      status,
-      outputBlob,
-      width,
-      height,
-      durationMs,
-      engineUsed,
-      errorMessage,
-    } = event.data;
+  if (worker) {
+    // Respuesta del Web Worker cuando termina de convertir una imagen
+    worker.addEventListener("message", async (event) => {
+      const {
+        id,
+        status,
+        outputBlob,
+        blob,
+        width,
+        height,
+        durationMs,
+        engineUsed,
+        errorMessage,
+        message,
+        code,
+      } = event.data;
 
-    const item = itemsMap.get(id);
-    if (item) {
-      // Si ya tenía un ObjectURL anterior (por ejemplo, al reconvertir), lo liberamos primero
-      if (item.downloadUrl) {
-        URL.revokeObjectURL(item.downloadUrl);
-        item.downloadUrl = null;
+      const finalBlob = outputBlob || blob;
+      const item = itemsMap.get(id);
+
+      // Si createImageBitmap falló en el Worker, reintentamos decodificando con <img> en el hilo principal
+      if (
+        item &&
+        status === "error" &&
+        code === "DECODE_FAILED" &&
+        !item._retriedOnMainThread
+      ) {
+        item._retriedOnMainThread = true;
+        pendingQueue.unshift(item.id);
+        isWorkerBusy = false;
+        activeItemId = null;
+        processNextInQueue();
+        return;
       }
 
-      if (status === "done" && outputBlob) {
-        item.downloadUrl = URL.createObjectURL(outputBlob);
-        item.outputSize = outputBlob.size;
-        item.width = width;
-        item.height = height;
-        item.durationMs = durationMs;
-        item.engineUsed = engineUsed;
-        updateItemCardFinished(item);
-      } else {
-        updateItemCardStatus(item, "error", errorMessage || "Error en conversión");
-      }
-    }
+      if (item) {
+        // Si ya tenía un ObjectURL anterior (por ejemplo, al reconvertir), lo liberamos primero
+        if (item.downloadUrl) {
+          URL.revokeObjectURL(item.downloadUrl);
+          item.downloadUrl = null;
+        }
 
-    // Liberamos el candado y pasamos a la siguiente imagen en la fila
-    isWorkerBusy = false;
-    processNextInQueue();
-  });
+        if ((status === "done" || status === "success") && finalBlob) {
+          item.downloadUrl = URL.createObjectURL(finalBlob);
+          item.outputSize = finalBlob.size;
+          item.width = width;
+          item.height = height;
+          item.durationMs = durationMs;
+          item.engineUsed = engineUsed || "OffscreenCanvas + Worker";
+          updateItemCardFinished(item);
+        } else {
+          updateItemCardStatus(
+            item,
+            "error",
+            errorMessage || message || "Error en conversión"
+          );
+        }
+      }
+
+      // Liberamos el candado y pasamos a la siguiente imagen en la fila
+      isWorkerBusy = false;
+      activeItemId = null;
+      processNextInQueue();
+    });
+
+    // Recuperación automática si el Worker lanza un error no capturado
+    const handleWorkerCrash = async (errEvent) => {
+      const currentItem = activeItemId ? itemsMap.get(activeItemId) : null;
+      if (currentItem) {
+        try {
+          await convertOnMainThread(currentItem);
+        } catch (fallbackErr) {
+          updateItemCardStatus(
+            currentItem,
+            "error",
+            fallbackErr instanceof Error
+              ? fallbackErr.message
+              : errEvent?.message || "Error en el Worker de conversión"
+          );
+        }
+      }
+      isWorkerBusy = false;
+      activeItemId = null;
+      processNextInQueue();
+    };
+
+    worker.addEventListener("error", handleWorkerCrash);
+    worker.addEventListener("messageerror", handleWorkerCrash);
+  }
 
   // ==========================================================================
   // 6. CREACIÓN Y ACTUALIZACIÓN DE TARJETAS EN LA LISTA DE DESCARGA
@@ -432,17 +756,28 @@
     const statusBadge = card.querySelector(".js-item-status");
     const detailsSpan = card.querySelector(".js-item-details");
     const downloadLink = card.querySelector(".js-download-link");
+    const formatBadge = card.querySelector(".queue-badge");
+
+    if (formatBadge) {
+      formatBadge.textContent = `${item.sourceFormat.toUpperCase()} ➔ ${item.targetExt.toUpperCase()}`;
+    }
 
     if (statusBadge) {
       statusBadge.hidden = false;
-      statusBadge.textContent = state === "working" ? "Procesando" : "Error";
-      statusBadge.className = `queue-badge ${state === "working" ? "is-working" : ""}`;
+      if (state === "queued") {
+        statusBadge.textContent = "En cola";
+        statusBadge.className = "queue-badge is-working js-item-status";
+      } else {
+        statusBadge.textContent = state === "working" ? "Procesando" : "Error";
+        statusBadge.className = `queue-badge ${state === "working" ? "is-working" : ""} js-item-status`;
+      }
     }
     if (detailsSpan) {
       detailsSpan.textContent = text;
     }
     if (downloadLink) {
       downloadLink.hidden = true;
+      downloadLink.removeAttribute("href");
     }
   }
 
@@ -484,11 +819,22 @@
   // 7. RECEPCIÓN DE ARCHIVOS DEL USUARIO (SUBIDA, ARRASTRAR Y DEMO)
   // ==========================================================================
   function handleIncomingFiles(fileList) {
-    const files = Array.from(fileList || []).filter(
-      (f) => f.type.startsWith("image/") || /\.(png|jpe?g|webp|avif|svg|bmp|gif|ico)$/i.test(f.name)
+    const rawFiles = Array.from(fileList || []);
+    if (rawFiles.length === 0) return;
+
+    const files = rawFiles.filter(
+      (f) =>
+        f.type.startsWith("image/") ||
+        /\.(png|jpe?g|jfif|pjpeg|pjp|webp|avif|svg|bmp|gif|ico|apng)$/i.test(
+          f.name
+        )
     );
 
-    if (files.length === 0) return;
+    if (files.length === 0) {
+      ramStatusText.textContent =
+        "Formato no compatible · Sube archivos PNG, JPG, WebP, AVIF, SVG, ICO, BMP o GIF.";
+      return;
+    }
 
     // Si el selector de origen estaba en "Auto", mostramos el formato detectado
     // de la primera imagen subida si coincide con nuestro catálogo
@@ -499,9 +845,9 @@
     ) {
       sourceSelect.value = firstDetected;
       // Si origen y destino quedaron iguales (ej. sube un WebP y el destino era WebP),
-      // cambiamos automáticamente el destino a PNG para ofrecer una conversión útil
+      // cambiamos automáticamente el destino a PNG/WebP para ofrecer una conversión útil
       if (targetSelect.value === firstDetected) {
-        targetSelect.value = firstDetected === "png" ? "webp" : "png";
+        targetSelect.value = firstDetected === "webp" ? "png" : "webp";
       }
       syncCapsuleUI();
     }
@@ -530,6 +876,7 @@
         height: 0,
         durationMs: 0,
         engineUsed: "",
+        _retriedOnMainThread: false,
       };
 
       itemsMap.set(item.id, item);
@@ -658,10 +1005,16 @@
     const quality = Number(qualityRange.value) || 92;
 
     itemsMap.forEach((item) => {
+      if (item.downloadUrl) {
+        URL.revokeObjectURL(item.downloadUrl);
+        item.downloadUrl = null;
+      }
       item.targetFormat = targetFormat;
       item.targetExt = targetExt;
       item.lossless = lossless;
       item.quality = quality;
+      item._retriedOnMainThread = false;
+      updateItemCardStatus(item, "queued", "En cola para reconvertir...");
       if (!pendingQueue.includes(item.id)) {
         pendingQueue.push(item.id);
       }
@@ -695,12 +1048,13 @@
     });
     itemsMap.clear();
 
-    // 3. Ocultamos la sección con transición suave y limpiamos el DOM
-    await hideElement(queueSection);
+    // 3. Limpiamos la lista inmediatamente para evitar condiciones de carrera asíncronas
     queueList.innerHTML = "";
     ramStatusText.textContent = "Memoria liberada · 0 imágenes en sesión";
+    await hideElement(queueSection);
   });
 
   // Inicializamos el estado visual de la cápsula al cargar la página
   syncCapsuleUI();
 })();
+
