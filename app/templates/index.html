@@ -26,13 +26,24 @@
       consumir el mínimo absoluto de memoria RAM.
     </p>
 
-    <a href="/convertir" id="hero-open-converter-btn" class="giant-cta-button">
-      <span>Elegir qué tipo de imagen convertir</span>
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <line x1="5" y1="12" x2="19" y2="12"></line>
-        <polyline points="12 5 19 12 12 19"></polyline>
-      </svg>
-    </a>
+    <div class="hero-cta-group">
+      <a href="/convertir" id="hero-open-converter-btn" class="giant-cta-button">
+        <span>Elegir qué tipo de imagen convertir</span>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+          <polyline points="12 5 19 12 12 19"></polyline>
+        </svg>
+      </a>
+
+      <a href="/borrador" id="hero-open-eraser-btn" class="giant-cta-secondary">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 19l7-7 3 3-7 7-3-3z"></path>
+          <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"></path>
+          <path d="M2 2l7.586 7.586"></path>
+        </svg>
+        <span>Borrar fondo con lápiz</span>
+      </a>
+    </div>
 
     <div class="hero-meta-row">
       <span class="hero-meta-item">
@@ -117,6 +128,16 @@
           Si subes varias imágenes, se procesan estrictamente en fila de una en una.
           Apenas se codifica una imagen, ejecutamos <span class="code-badge">bitmap.close()</span>
           y vaciamos el lienzo para devolver la memoria RAM al sistema operativo al instante.
+        </p>
+      </article>
+
+      <article class="info-card">
+        <span class="step-number">4</span>
+        <h3>Borrador manual por trazos</h3>
+        <p>
+          Al borrar el fondo con el lápiz en <a href="/borrador" style="color: var(--brand-primary); font-weight: 600;">Borrador de Fondo</a>,
+          el historial guarda solo coordenadas vectoriales de unos pocos KB (no copias
+          de toda la imagen), permitiéndote deshacer o restaurar sin inflar la RAM.
         </p>
       </article>
     </div>

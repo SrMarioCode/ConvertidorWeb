@@ -16,17 +16,22 @@ ConvertidorWeb/
 ├── app/
 │   ├── __init__.py
 │   ├── config.py              # Catálogo centralizado de formatos de entrada (incl. ICO), salida y presets
-│   ├── main.py                # Servidor FastAPI: rutas HTML ("/", "/convertir"), API ("/api/formats", "/health", "/favicon.ico") y rutas relativas
+│   ├── main.py                # Servidor FastAPI: rutas HTML ("/", "/convertir", "/borrador"), API JSON y favicon
 │   ├── templates/             # Plantillas Jinja2 con herencia y rutas relativas a la raíz (anti Mixed-Content)
+│   │   ├── partials/
+│   │   │   └── eraser_studio.html # Componente reutilizable del estudio de borrado manual con lápiz
 │   │   ├── base.html          # Plantilla maestra (barra de navegación, favicon SVG, tema claro/oscuro, pie de página)
 │   │   ├── index.html         # Página de Inicio ("/") que explica la web y la gestión de RAM
-│   │   └── converter.html     # Herramienta ("/convertir") con el Botón Gigante "De qué a qué"
+│   │   ├── converter.html     # Herramienta ("/convertir") con Cápsula Gigante y modal <dialog> del borrador
+│   │   └── eraser.html        # Página dedicada ("/borrador") del borrador manual de fondo con lápiz
 │   └── static/                # Archivos servidos al navegador / CDN
 │       ├── css/
-│       │   └── styles.css     # Sistema de diseño Google Material 3 con variables CSS y light-dark()
+│       │   └── styles.css     # Sistema de diseño Google Material 3 con light-dark(), <dialog>, sliders y 2D panning
 │       └── js/
 │           ├── theme.js       # Controlador del tema claro/oscuro sincronizado con <meta name="color-scheme">
-│           ├── app.js         # Lógica del Botón Gigante, subida Drag & Drop, cola 1-a-1 y respaldo en hilo principal
+│           ├── eraser.js      # Motor del borrador manual con historial de trazos vectoriales y máscara separada
+│           ├── eraser_page.js # Controlador de la vista dedicada /borrador y exportación transparente
+│           ├── app.js         # Lógica del Botón Gigante, cola 1-a-1, respaldo y diálogo modal del borrador
 │           └── worker.js      # Web Worker aislado: OffscreenCanvas + @jsquash single-threaded (AVIF/WebP WASM) + ICO/BMP
 └── tests/
     └── test_app.py            # Suite de pruebas automatizadas (Pytest + HTTPX TestClient)
@@ -46,6 +51,8 @@ ConvertidorWeb/
    Si el usuario arrastra varias imágenes, `app.js` las procesa en fila de una en una. Nunca se acumulan múltiples mapas de bits descomprimidos en la RAM al mismo tiempo.
 5. **Carga bajo demanda de WebAssembly (`@jsquash` Single-Threaded)**:
    Para formatos estándar (`PNG`, `JPG`, `WebP`) usamos el codificador nativo en C++ del navegador (o `@jsquash/webp` con `lossless: 1, exact: 1` para WebP sin pérdida). Para `AVIF`, el Worker instancia directamente el módulo WebAssembly single-threaded (`avif_enc.wasm`) con control real de cuantización (`cqLevel: 0` sin pérdida y `subsample: 3` YUV444) sin crear sub-workers cross-origin.
+6. **Borrador manual con historial vectorial por trazos (`eraser.js`)**:
+   En `/borrador` y dentro del `<dialog>` de `/convertir`, en vez de guardar copias completas de píxeles (`ImageData`) por cada paso de Deshacer, almacenamos únicamente las coordenadas ligeras de cada trazo (`{ tool, size, softness, points }`) junto a una máscara de borrado separada (`maskCanvas`). Incluye lápiz **Borrador** directo, lápiz de **Selección** rojo (para marcar y confirmar el recorte en lote), **Restaurar**, **Mover 2D / Zoom**, y liberación inmediata al cerrar (`originalBitmap.close()` + lienzos `1×1`).
 
 ---
 
@@ -71,5 +78,6 @@ ConvertidorWeb/
 4. **Abrir en el navegador**:
    - Página de Inicio y Explicación: `http://localhost:8000/`
    - Convertidor Interactivo: `http://localhost:8000/convertir`
+   - Borrador de Fondo Manual con Lápiz: `http://localhost:8000/borrador`
    - Catálogo JSON (API): `http://localhost:8000/api/formats`
    - Estado del Servidor: `http://localhost:8000/health`

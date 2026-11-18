@@ -313,8 +313,17 @@
     }
   });
 
+  window.ConvertidorEraser?.syncModernRangeSlider?.(
+    qualityRange,
+    `${qualityRange.value}%`
+  );
+
   qualityRange.addEventListener("input", () => {
     qualityValueLabel.textContent = `${qualityRange.value}%`;
+    window.ConvertidorEraser?.syncModernRangeSlider?.(
+      qualityRange,
+      `${qualityRange.value}%`
+    );
   });
 
   // ==========================================================================
@@ -330,13 +339,15 @@
   async function parseSvgDimensions(svgBlob) {
     try {
       const text = await svgBlob.text();
-      const viewBoxMatch = text.match(
+      const svgTagMatch = text.match(/<svg\b[^>]*>/i);
+      const rootSvgTag = svgTagMatch ? svgTagMatch[0] : text;
+      const viewBoxMatch = rootSvgTag.match(
         /viewBox\s*=\s*["']\s*([-\d.]+)[,\s]+([-\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)\s*["']/i
       );
-      const widthMatch = text.match(
+      const widthMatch = rootSvgTag.match(
         /\bwidth\s*=\s*["']\s*([\d.]+)\s*(?:px)?\s*["']/i
       );
-      const heightMatch = text.match(
+      const heightMatch = rootSvgTag.match(
         /\bheight\s*=\s*["']\s*([\d.]+)\s*(?:px)?\s*["']/i
       );
 
@@ -731,21 +742,42 @@
 
     row.innerHTML = `
       <div class="queue-thumb-box" aria-hidden="true">
-        <span>${item.sourceFormat.toUpperCase()}</span>
+        <span class="js-source-ext">${item.sourceFormat.toUpperCase()}</span>
       </div>
       <div class="queue-info">
-        <div class="queue-filename" title="${item.file.name}">${item.file.name}</div>
+        <div class="queue-filename"></div>
         <div class="queue-meta">
           <span class="queue-badge">${item.sourceFormat.toUpperCase()} ➔ ${item.targetExt.toUpperCase()}</span>
-          <span>Original: <strong>${formatBytes(item.file.size)}</strong></span>
+          <span class="js-original-size"></span>
           <span class="js-item-details">En cola para procesar...</span>
         </div>
       </div>
       <div class="queue-actions">
         <span class="queue-badge is-working js-item-status">En cola</span>
+        <button type="button" class="btn-secondary js-erase-bg-btn" title="Abrir borrador manual de fondo con lápiz">
+          Borrar fondo
+        </button>
         <a class="btn-primary js-download-link" hidden>Descargar</a>
       </div>
     `;
+
+    const filenameEl = row.querySelector(".queue-filename");
+    if (filenameEl) {
+      filenameEl.textContent = item.file.name;
+      filenameEl.setAttribute("title", item.file.name);
+    }
+
+    const originalSizeEl = row.querySelector(".js-original-size");
+    if (originalSizeEl) {
+      originalSizeEl.innerHTML = `Original: <strong>${formatBytes(item.file.size)}</strong>`;
+    }
+
+    const eraseBtn = row.querySelector(".js-erase-bg-btn");
+    if (eraseBtn) {
+      eraseBtn.addEventListener("click", () => {
+        openEraserModalForItem(item.id);
+      });
+    }
 
     return row;
   }
@@ -1053,6 +1085,159 @@
     ramStatusText.textContent = "Memoria liberada · 0 imágenes en sesión";
     await hideElement(queueSection);
   });
+
+  // ==========================================================================
+  // 10. DIÁLOGO MODAL DEL BORRADOR MANUAL DE FONDO (<dialog> + TOP LAYER)
+  // ==========================================================================
+  const eraserDialog = document.getElementById("eraser-dialog");
+  const eraserDialogCloseBtn = document.getElementById("eraser-dialog-close-btn");
+  const eraserDialogCancelBtn = document.getElementById("eraser-dialog-cancel-btn");
+  const eraserDialogApplyBtn = document.getElementById("eraser-dialog-apply-btn");
+  const eraserDialogSubtitle = document.getElementById("eraser-dialog-subtitle");
+
+  const eraserController =
+    eraserDialog && window.ConvertidorEraser
+      ? window.ConvertidorEraser.createEraserController()
+      : null;
+
+  let editingItemId = null;
+
+  function supportsTopLayerExit() {
+    return window.CSS?.supports?.("overlay", "auto") && canTransitionDisplay();
+  }
+
+  async function closeTopLayerDialog(dialog, returnValue = "") {
+    if (!dialog || !dialog.open) return;
+
+    if (!supportsTopLayerExit()) {
+      dialog.setAttribute("data-closing", "");
+      const animations = dialog.getAnimations({ subtree: true });
+      if (animations.length > 0) {
+        await Promise.race([
+          Promise.allSettled(animations.map((a) => a.finished)),
+          new Promise((r) => setTimeout(r, 1000)),
+        ]);
+      }
+      if (!dialog.hasAttribute("data-closing")) return;
+      dialog.removeAttribute("data-closing");
+    }
+
+    dialog.close(returnValue);
+  }
+
+  async function openEraserModalForItem(itemId) {
+    const item = itemsMap.get(itemId);
+    if (!item || !eraserDialog || !eraserController) return;
+
+    editingItemId = itemId;
+    if (eraserDialogSubtitle) {
+      eraserDialogSubtitle.textContent = `Editando "${item.file.name}" · Pinta con el lápiz para borrar el fondo.`;
+    }
+
+    eraserDialog.removeAttribute("data-closing");
+    eraserDialog.showModal();
+
+    try {
+      await eraserController.loadFile(item.file);
+    } catch (err) {
+      await closeTopLayerDialog(eraserDialog, "error");
+      ramStatusText.textContent =
+        err instanceof Error ? err.message : "No se pudo abrir la imagen en el borrador.";
+    }
+  }
+
+  if (eraserDialog) {
+    eraserDialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      closeTopLayerDialog(eraserDialog, "cancel");
+    });
+
+    eraserDialog.addEventListener("close", () => {
+      eraserDialog.returnValue = "";
+      editingItemId = null;
+      if (eraserController) {
+        eraserController.clear();
+      }
+    });
+
+    eraserDialogCloseBtn?.addEventListener("click", () => {
+      closeTopLayerDialog(eraserDialog, "cancel");
+    });
+
+    eraserDialogCancelBtn?.addEventListener("click", () => {
+      closeTopLayerDialog(eraserDialog, "cancel");
+    });
+
+    eraserDialogApplyBtn?.addEventListener("click", async () => {
+      if (!eraserController || editingItemId === null) return;
+      const item = itemsMap.get(editingItemId);
+      if (!item) {
+        closeTopLayerDialog(eraserDialog, "cancel");
+        return;
+      }
+
+      eraserDialogApplyBtn.disabled = true;
+      try {
+        const { file: editedFile } = await eraserController.exportTransparentPng();
+
+        if (item.downloadUrl) {
+          URL.revokeObjectURL(item.downloadUrl);
+          item.downloadUrl = null;
+        }
+
+        item.file = editedFile;
+        item.sourceFormat = "png";
+        item._retriedOnMainThread = false;
+
+        // Si el formato destino era JPEG (sin transparencia), cambiamos a PNG
+        // para preservar el fondo transparente que el usuario acaba de borrar.
+        let switchedToPng = false;
+        if (item.targetFormat === "jpeg") {
+          item.targetFormat = "png";
+          item.targetExt = "png";
+          targetSelect.value = "png";
+          switchedToPng = true;
+          syncCapsuleUI();
+        }
+
+        const card = document.getElementById(`queue-item-${item.id}`);
+        if (card) {
+          const filenameEl = card.querySelector(".queue-filename");
+          const sourceExtEl = card.querySelector(".js-source-ext");
+          const originalSizeEl = card.querySelector(".js-original-size");
+          if (filenameEl) {
+            filenameEl.textContent = editedFile.name;
+            filenameEl.setAttribute("title", editedFile.name);
+          }
+          if (sourceExtEl) {
+            sourceExtEl.textContent = "PNG";
+          }
+          if (originalSizeEl) {
+            originalSizeEl.innerHTML = `Editada: <strong>${formatBytes(editedFile.size)}</strong>`;
+          }
+        }
+
+        updateItemCardStatus(
+          item,
+          "queued",
+          switchedToPng
+            ? "Fondo borrado · Exportando a PNG transparente..."
+            : "Fondo borrado · Reconvirtiendo..."
+        );
+        if (!pendingQueue.includes(item.id)) {
+          pendingQueue.push(item.id);
+        }
+
+        await closeTopLayerDialog(eraserDialog, "apply");
+        processNextInQueue();
+      } catch (err) {
+        ramStatusText.textContent =
+          err instanceof Error ? err.message : "No se pudo aplicar el borrado.";
+      } finally {
+        eraserDialogApplyBtn.disabled = false;
+      }
+    });
+  }
 
   // Inicializamos el estado visual de la cápsula al cargar la página
   syncCapsuleUI();

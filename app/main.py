@@ -121,6 +121,9 @@ async def converter_page(
     despliega suavemente la zona de subida y procesa las imágenes de una en una
     en el dispositivo del usuario sin saturar la memoria RAM.
 
+    Además, integra el modal de Borrador Manual de Fondo para limpiar
+    transparencias con lápiz antes de exportar al formato final.
+
     Nota: Acepta parámetros opcionales en la URL (ej. `/convertir?de=png&a=webp`)
     para que los botones de la página de Inicio preconfiguren automáticamente
     el convertidor.
@@ -148,6 +151,28 @@ async def converter_page(
             "quick_presets": QUICK_PRESETS,
             "selected_source": selected_source,
             "selected_target": selected_target,
+        },
+    )
+
+
+@app.get("/borrador", response_class=HTMLResponse, name="eraser")
+async def eraser_page(request: Request) -> HTMLResponse:
+    """
+    Ruta del Borrador Manual de Fondo (`/borrador`):
+    Permite subir una imagen y seleccionar manualmente con el lápiz qué zonas
+    borrar o marcar para volverlas transparentes en tiempo real, con arquitectura
+    de máscara vectorial para consumir el mínimo absoluto de memoria RAM.
+    """
+    # Solo ofrecemos formatos de salida que conservan canal alfa (transparencia)
+    transparent_formats = [fmt for fmt in OUTPUT_FORMATS if fmt["supports_alpha"]]
+
+    return templates.TemplateResponse(
+        request=request,
+        name="eraser.html",
+        context={
+            "active_page": "eraser",
+            "page_title": "Borrador de Fondo Manual — ConvertidorWeb",
+            "transparent_formats": transparent_formats,
         },
     )
 

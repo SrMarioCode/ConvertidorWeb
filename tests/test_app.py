@@ -38,6 +38,9 @@ def test_home_page_renders_correctly() -> None:
     assert 'href="/static/css/styles.css"' in html
     assert 'src="/static/js/theme.js"' in html
     assert 'href="/convertir"' in html
+    assert 'href="/borrador"' in html
+    assert 'id="nav-link-eraser"' in html
+    assert 'id="hero-open-eraser-btn"' in html
     assert "data:image/svg+xml" in html
 
 
@@ -48,9 +51,41 @@ def test_converter_page_defaults_and_presets() -> None:
     assert 'id="giant-converter-capsule"' in html
     assert 'id="source-format-select"' in html
     assert 'id="target-format-select"' in html
+    assert 'id="eraser-dialog"' in html
+    assert 'role="dialog"' not in html
+    assert 'aria-modal=' not in html
+    assert 'id="eraser-studio"' in html
+    assert 'src="/static/js/eraser.js"' in html
     assert 'src="/static/js/app.js"' in html
     assert 'data-lossless="true"' in html
     assert 'data-lossless="false"' in html
+
+
+def test_eraser_page_renders_studio_and_transparent_formats() -> None:
+    response = client.get("/borrador")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    html = response.text
+    assert 'id="eraser-studio"' in html
+    assert 'id="eraser-tool-erase"' in html
+    assert 'id="eraser-tool-select"' in html
+    assert 'id="eraser-tool-restore"' in html
+    assert 'id="eraser-tool-pan"' in html
+    assert 'id="eraser-brush-size"' in html
+    assert 'id="eraser-brush-softness"' in html
+    assert 'id="eraser-viewport"' in html
+    assert 'id="eraser-canvas"' in html
+    assert 'id="eraser-selection-canvas"' in html
+    assert 'id="eraser-export-format"' in html
+    assert 'src="/static/js/eraser.js"' in html
+    assert 'src="/static/js/eraser_page.js"' in html
+
+    # Solo formatos con soporte de canal alfa (sin JPEG)
+    assert 'value="png"' in html
+    assert 'value="webp"' in html
+    assert 'value="avif"' in html
+    assert 'value="ico"' in html
+    assert 'value="jpeg"' not in html
 
 
 def test_converter_page_query_params_and_collision_prevention() -> None:
@@ -81,7 +116,7 @@ def test_https_proxy_headers_emit_zero_insecure_http_urls() -> None:
     (x-forwarded-proto: https), las plantillas nunca emiten URLs http:// absolutas
     que serían bloqueadas por Mixed Content en el navegador.
     """
-    for path in ["/", "/convertir", "/convertir?de=svg&a=png"]:
+    for path in ["/", "/convertir", "/convertir?de=svg&a=png", "/borrador"]:
         response = client.get(
             path,
             headers={
@@ -152,6 +187,8 @@ def test_static_assets_and_worker_contracts() -> None:
         "/static/js/theme.js",
         "/static/js/app.js",
         "/static/js/worker.js",
+        "/static/js/eraser.js",
+        "/static/js/eraser_page.js",
     ]:
         res = client.get(asset_path)
         assert res.status_code == 200
@@ -167,6 +204,13 @@ def test_static_assets_and_worker_contracts() -> None:
     assert "convertOnMainThread" in app_js
     assert "decodeFileToBitmapOnMainThread" in app_js
     assert "capsule-action-text" in app_js
+    assert "openEraserModalForItem" in app_js
+
+    eraser_js = client.get("/static/js/eraser.js").text
+    assert "ConvertidorEraser" in eraser_js
+    assert "exportTransparentPng" in eraser_js
+    assert "syncModernRangeSlider" in eraser_js
+    assert "originalBitmap.close()" in eraser_js
 
 
 def test_api_index_importlib_from_external_cwd() -> None:
